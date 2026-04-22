@@ -925,6 +925,676 @@ const SPECIAL_EVENTS_POOL = [
   }
 ];
 
+// (duplicate DAILY_CRISIS_POOL removed)
+
+// ==========================================
+// 大型事件池 (Major Events Pool)
+// ==========================================
+const MAJOR_EVENTS_POOL = [
+  // ---------- 1. 深淵風暴 ----------
+  {
+    id: 'abyssal_storm',
+    name: '🌪️ 深淵風暴',
+    category: 'environmental',
+    getDesc: (state) => {
+      const abyss = state.abyssLevel || 0;
+      if (abyss >= 75) {
+        return '天空裂開了。那不是雲，是無數張扭曲的面孔在翻湧。雨水是溫熱的，帶著鐵鏽與海藻的腥味。船身在巨浪中如同玩具，而你聽見浪濤裡有東西在呼喚你的名字。';
+      } else if (abyss >= 40) {
+        return '毫無預警地，黑色的巨浪從四面八方襲來。羅盤瘋狂旋轉，星辰被濃雲吞噬。這不是普通的風暴——浪尖上閃爍著磷光，彷彿有無數眼睛在凝視。';
+      } else {
+        return '地平線上湧起一道不祥的黑色雲牆，迅速逼近。空氣變得沉重，充滿鹽與腐敗的氣味。水手們驚慌地指向海面——浪花裡有東西在游動。';
+      }
+    },
+    choices: [
+      {
+        text: '掌舵，試圖駕馭風暴',
+        attribute: PLAYER_ATTRIBUTES.VIGOR,
+        difficulty: 20,
+        apCost: 3,
+        success: (chars, state) => {
+          chars.forEach(c => { if (c.alive) c.stress = Math.max(0, c.stress - 10); });
+          // 隨機一名 NPC 對玩家好感上升
+          const alive = chars.filter(c => c.alive && c.id !== state.playerCard?.id);
+          if (alive.length) {
+            const grateful = alive[Math.floor(Math.random() * alive.length)];
+            // 好感度增加（需有 bonds 系統）
+          }
+          return '你死死握住舵輪，與巨浪搏鬥了整整一夜。當黎明到來時，風暴奇蹟般地平息了。船員們看你的眼神充滿敬畏。';
+        },
+        failure: (chars, state) => {
+          const alive = chars.filter(c => c.alive);
+          // 30% 機率有船員被浪捲走
+          if (alive.length > 2 && Math.random() < 0.3) {
+            const victim = alive[Math.floor(Math.random() * alive.length)];
+            victim.alive = false;
+            chars.forEach(c => { if (c.alive) c.stress = Math.min(100, c.stress + 25); });
+            return `一個巨浪打來，${victim.name} 被捲入海中，瞬間消失。你只能勉強穩住船身，但船體已多處受損。`;
+          } else {
+            chars.forEach(c => { if (c.alive) c.stress = Math.min(100, c.stress + 20); });
+            return '風暴比你更強。船帆撕裂，船身傾斜，你被浪打得暈頭轉向。當一切平息時，所有人都筋疲力竭。';
+          }
+        }
+      },
+      {
+        text: '命令所有人躲進船艙，聽天由命',
+        attribute: PLAYER_ATTRIBUTES.WILLPOWER,
+        difficulty: 15,
+        apCost: 1,
+        success: (chars, state) => {
+          chars.forEach(c => { if (c.alive) c.stress = Math.max(0, c.stress - 5); });
+          return '你帶領眾人蜷縮在底艙，聽著頭頂傳來的恐怖聲響。奇蹟般地，船沒有沉。當你再次踏上甲板，天空已經放晴。';
+        },
+        failure: (chars, state) => {
+          chars.forEach(c => { if (c.alive) c.stress = Math.min(100, c.stress + 15); });
+          // 船體受損，損失物資
+          return '風暴肆虐了許久，船體發出不祥的呻吟。當一切結束，你發現淡水桶被打破了幾個，糧食也被海水浸濕。';
+        }
+      },
+      {
+        text: '站在甲板上，直面深淵',
+        attribute: PLAYER_ATTRIBUTES.INSIGHT,
+        difficulty: 25,
+        apCost: 2,
+        condition: (state) => (state.abyssLevel || 0) >= 40,
+        success: (chars, state) => {
+          // 獲得特殊知識或線索
+          if (!state.playerKnowledge) state.playerKnowledge = {};
+          state.playerKnowledge['abyssal_vision'] = true;
+          chars.forEach(c => { if (c.alive) c.stress = Math.min(100, c.stress + 5); });
+          return '你睜大眼睛，任由雨水刺痛臉龐。在閃電照亮天際的瞬間，你看見了——浪濤之下，一隻難以名狀的巨眼正凝視著你。它沒有惡意，只有純粹的、超越理解的好奇。你知道了，你們不過是它漫長生命中的一幀畫面。';
+        },
+        failure: (chars, state) => {
+          chars.forEach(c => { if (c.alive) c.stress = Math.min(100, c.stress + 40); });
+          const playerIdx = chars.findIndex(c => c.id === state.playerCard?.id);
+          if (playerIdx !== -1) chars[playerIdx].infection = Math.min(5, (chars[playerIdx].infection || 0) + 1);
+          return '你試圖看清深淵的真面目，但人類的感官無法承受。你的腦海中湧入無法理解的畫面與聲音，當你恢復意識時，發現自己蜷縮在角落，手臂上多了一道黑色的紋路。';
+        }
+      }
+    ]
+  },
+
+  // ---------- 2. 叛亂之刻 ----------
+  {
+    id: 'mutiny',
+    name: '⚔️ 叛亂之刻',
+    category: 'social',
+    getDesc: (state) => {
+      const alive = state.characters.filter(c => c.alive);
+      const highStress = alive.filter(c => c.stress > 70).length;
+      const leader = alive.find(c => c.job === '船長' && c.alive);
+      if (!leader) {
+        return '沒有船長的船，就是一座漂浮的監獄。一群絕望的船員聚集在甲板上，他們的眼神不再理智。有人舉起了魚叉。';
+      }
+      if (highStress >= 3) {
+        return `恐懼已經徹底壓垮了秩序。以 ${alive.filter(c => c.stress > 70)[0]?.name || '某人'} 為首的一群船員，正持械包圍船長室，高喊著要處決「帶來詛咒的人」。`;
+      }
+      return '連日的死亡讓船員之間充滿猜忌。你聽見水手艙傳來激烈的爭吵與金屬碰撞聲——一場叛亂正在醞釀。';
+    },
+    getVariants: (state) => {
+      const alive = state.characters.filter(c => c.alive);
+      const leader = alive.find(c => c.stress > 70 && (c.persona === PERSONA.VULGAR || c.persona === PERSONA.ARROGANT));
+      if (leader) {
+        // 有明確叛亂首領
+        return [{
+          text: `說服 ${leader.name} 放下武器`,
+          attribute: PLAYER_ATTRIBUTES.CHARISMA,
+          difficulty: 22,
+          apCost: 2,
+          condition: () => true,
+          success: (chars, state) => {
+            const idx = chars.findIndex(c => c.id === leader.id);
+            if (idx !== -1) chars[idx].stress = Math.max(0, chars[idx].stress - 30);
+            chars.forEach(c => { if (c.alive) c.stress = Math.max(0, c.stress - 15); });
+            return `${leader.name} 在你的勸說下放下了武器。叛亂暫時平息，但船上的裂痕仍在。`;
+          },
+          failure: (chars, state) => {
+            chars.forEach(c => { if (c.alive) c.stress = Math.min(100, c.stress + 20); });
+            return `${leader.name} 拒絕聽從。衝突一觸即發。`;
+          }
+        }];
+      }
+      return [];
+    },
+    choices: [
+      {
+        text: '站出來，試圖平息暴亂',
+        attribute: PLAYER_ATTRIBUTES.CHARISMA,
+        difficulty: 20,
+        apCost: 2,
+        success: (chars, state) => {
+          chars.forEach(c => { if (c.alive) c.stress = Math.max(0, c.stress - 20); });
+          return '你的話語像一盆冷水，澆醒了部分人的理智。他們面面相覷，武器緩緩放下。';
+        },
+        failure: (chars, state) => {
+          const alive = chars.filter(c => c.alive);
+          if (alive.length > 2) {
+            const victim = alive[Math.floor(Math.random() * alive.length)];
+            victim.alive = false;
+            chars.forEach(c => { if (c.alive) c.stress = Math.min(100, c.stress + 30); });
+            return `你的話激怒了暴徒。混亂中，${victim.name} 被誤殺。`;
+          } else {
+            chars.forEach(c => { if (c.alive) c.stress = Math.min(100, c.stress + 30); });
+            return '你的勸阻毫無作用。船員們分成兩派，血腥的衝突開始了。';
+          }
+        }
+      },
+      {
+        text: '加入叛亂，推翻現有秩序',
+        attribute: PLAYER_ATTRIBUTES.VIGOR,
+        difficulty: 16,
+        apCost: 3,
+        condition: (state) => state.playerCard?.persona !== PERSONA.PIOUS,
+        success: (chars, state) => {
+          const captain = chars.find(c => c.job === '船長' && c.alive);
+          if (captain) captain.alive = false;
+          chars.forEach(c => { if (c.alive && c.persona === PERSONA.VULGAR) c.stress = Math.max(0, c.stress - 30); });
+          return `你站在叛亂者一方。混戰過後，船長被制服並關押。新的「秩序」誕生了——以恐懼與暴力為基礎。`;
+        },
+        failure: (chars, state) => {
+          const playerIdx = chars.findIndex(c => c.id === state.playerCard?.id);
+          if (playerIdx !== -1) {
+            chars[playerIdx].alive = false;
+            return '叛亂失敗了。你被忠於船長的水手圍攻，身負重傷。在意識模糊之際，你看見深淵在微笑。';
+          }
+          return '叛亂被鎮壓，你被制服。';
+        }
+      },
+      {
+        text: '躲起來，靜觀其變',
+        attribute: null,
+        difficulty: 0,
+        apCost: 0,
+        effect: (chars, state) => {
+          const alive = chars.filter(c => c.alive);
+          const casualties = Math.floor(Math.random() * 3) + 1;
+          for (let i = 0; i < casualties; i++) {
+            if (alive.length <= 2) break;
+            const idx = Math.floor(Math.random() * alive.length);
+            alive[idx].alive = false;
+            alive.splice(idx, 1);
+          }
+          chars.forEach(c => { if (c.alive) c.stress = Math.min(100, c.stress + 40); });
+          return `你躲在貨艙裡，聽著頭頂傳來的慘叫與砍殺聲。當一切歸於寂靜，你回到甲板，只見滿地狼藉與屍體。`;
+        }
+      }
+    ]
+  },
+
+  // ---------- 3. 異界迴響 ----------
+  {
+    id: 'otherworldly_echo',
+    name: '🌀 異界迴響',
+    category: 'psychological',
+    getDesc: (state) => {
+      const abyss = state.abyssLevel || 0;
+      if (abyss >= 60) {
+        return '現實開始剝落。你同時看見三個版本的自己：一個在禱告，一個在殺人，一個在凝視你。哪一個才是真的？';
+      }
+      return '船上的每個人同時聽見了——那不是聲音，而是直接在大腦中響起的低語。它述說著你最深層的恐懼與渴望，用一種你不懂卻完全理解的語言。';
+    },
+    choices: [
+      {
+        text: '對抗低語，堅守理智',
+        attribute: PLAYER_ATTRIBUTES.WILLPOWER,
+        difficulty: 24,
+        apCost: 2,
+        success: (chars, state) => {
+          chars.forEach(c => { if (c.alive) c.stress = Math.min(100, c.stress + 5); });
+          return '你咬緊牙關，拒絕聆聽。低語漸漸遠去，但你感覺自己的一部分被永遠留在了那個聲音裡。';
+        },
+        failure: (chars, state) => {
+          chars.forEach(c => { if (c.alive) c.stress = Math.min(100, c.stress + 30); });
+          const playerIdx = chars.findIndex(c => c.id === state.playerCard?.id);
+          if (playerIdx !== -1) chars[playerIdx].infection = Math.min(5, (chars[playerIdx].infection || 0) + 1);
+          return '你試圖抵抗，但那聲音太強大了。你開始不由自主地回應它，說著連自己也不懂的話。';
+        }
+      },
+      {
+        text: '聆聽深淵的教誨',
+        attribute: PLAYER_ATTRIBUTES.INSIGHT,
+        difficulty: 20,
+        apCost: 2,
+        success: (chars, state) => {
+          // 獲得隨機古籍線索或知識
+          state.playerKnowledge = state.playerKnowledge || {};
+          state.playerKnowledge['echo_knowledge'] = (state.playerKnowledge['echo_knowledge'] || 0) + 1;
+          const playerIdx = chars.findIndex(c => c.id === state.playerCard?.id);
+          if (playerIdx !== -1) {
+            chars[playerIdx].stress = Math.min(100, chars[playerIdx].stress + 10);
+            chars[playerIdx].infection = Math.min(5, (chars[playerIdx].infection || 0) + 1);
+          }
+          return '你放下防備，任由知識流入。你看見了沉沒之城的尖塔，理解了血液中鹽分的意義。你知道了太多，但你也變得更……強大。';
+        },
+        failure: (chars, state) => {
+          const playerIdx = chars.findIndex(c => c.id === state.playerCard?.id);
+          if (playerIdx !== -1) {
+            chars[playerIdx].stress = Math.min(100, chars[playerIdx].stress + 40);
+            chars[playerIdx].infection = Math.min(5, (chars[playerIdx].infection || 0) + 2);
+          }
+          return '你試圖理解，但人類的意識無法承載。你在尖叫中失去意識，醒來時發現自己正用指甲在牆上刻滿螺旋符號。';
+        }
+      },
+      {
+        text: '用噪音蓋過它',
+        attribute: PLAYER_ATTRIBUTES.VIGOR,
+        difficulty: 18,
+        apCost: 2,
+        success: (chars, state) => {
+          chars.forEach(c => { if (c.alive) c.stress = Math.max(0, c.stress - 10); });
+          return '你瘋狂敲打身邊的一切，用物理的噪音對抗精神入侵。奇蹟般地，低語被壓制了。';
+        },
+        failure: (chars, state) => {
+          chars.forEach(c => { if (c.alive) c.stress = Math.min(100, c.stress + 20); });
+          return '你的敲打聲反而與低語形成了詭異的共鳴，恐懼加倍。';
+        }
+      }
+    ]
+  },
+
+  // ---------- 4. 飢餓遊戲 ----------
+  {
+    id: 'hunger_games',
+    name: '🍖 飢餓遊戲',
+    category: 'survival',
+    getDesc: (state) => {
+      const cook = state.characters.find(c => c.job === '廚師' && c.alive);
+      if (!cook) {
+        return '糧食已經見底。水手們的眼神開始變得飢餓，盯著彼此的手臂，喉結上下滾動。';
+      }
+      return `${cook.name} 絕望地宣布：剩下的食物只夠支撐兩天。船員們開始竊竊私語，有人提議「減少用餐人數」。`;
+    },
+    choices: [
+      {
+        text: '實施嚴格的配給制',
+        attribute: PLAYER_ATTRIBUTES.CHARISMA,
+        difficulty: 20,
+        apCost: 2,
+        success: (chars, state) => {
+          chars.forEach(c => { if (c.alive) c.stress = Math.min(100, c.stress + 10); });
+          return '你說服大家接受更嚴格的配給。雖然飢餓難耐，但暫時不會有人被殺來當食物。';
+        },
+        failure: (chars, state) => {
+          chars.forEach(c => { if (c.alive) c.stress = Math.min(100, c.stress + 25); });
+          return '沒有人願意讓出自己的份額。爭吵升級為推擠，信任徹底崩潰。';
+        }
+      },
+      {
+        text: '尋找替代食物（釣魚、海藻）',
+        attribute: PLAYER_ATTRIBUTES.INSIGHT,
+        difficulty: 22,
+        apCost: 3,
+        success: (chars, state) => {
+          chars.forEach(c => { if (c.alive) c.stress = Math.max(0, c.stress - 15); });
+          return '你利用簡易工具從海中捕撈到一些奇怪的魚類和海藻。雖然它們的長相令人不安，但至少能果腹。';
+        },
+        failure: (chars, state) => {
+          chars.forEach(c => { if (c.alive) c.stress = Math.min(100, c.stress + 20); });
+          const sick = chars.filter(c => c.alive).slice(0, 2);
+          sick.forEach(c => c.infection = Math.min(5, (c.infection || 0) + 1));
+          return '你撈上來的東西散發著惡臭，食用後多人出現幻覺與嘔吐。';
+        }
+      },
+      {
+        text: '……獻祭一人',
+        attribute: PLAYER_ATTRIBUTES.VIGOR,
+        difficulty: 25,
+        apCost: 3,
+        condition: (state) => state.playerCard?.persona === PERSONA.VULGAR || state.playerCard?.persona === PERSONA.FATALIST,
+        success: (chars, state) => {
+          const weak = chars.filter(c => c.alive && c.id !== state.playerCard?.id).sort((a,b) => a.stress - b.stress)[0];
+          if (weak) weak.alive = false;
+          chars.forEach(c => { if (c.alive) c.stress = Math.min(100, c.stress + 50); });
+          return `你親手結束了 ${weak?.name || '一名虛弱者'} 的生命。廚房飄出肉香，沒有人問那是什麼肉。`;
+        },
+        failure: (chars, state) => {
+          const playerIdx = chars.findIndex(c => c.id === state.playerCard?.id);
+          if (playerIdx !== -1) {
+            chars[playerIdx].alive = false;
+            return '你的提議引發眾怒，他們認為你才是該被吃掉的那個。';
+          }
+          return '行動失敗。';
+        }
+      }
+    ]
+  },
+
+  // ---------- 5. 霧中幽影 ----------
+  {
+    id: 'fog_phantoms',
+    name: '🌫️ 霧中幽影',
+    category: 'exploration',
+    getDesc: (state) => {
+      return '一片不自然的濃霧籠罩了船隻，能見度不到三步。霧中傳來腳步聲、低語聲，以及……呼喚你名字的聲音。';
+    },
+    choices: [
+      {
+        text: '留在原地，等待霧散',
+        attribute: PLAYER_ATTRIBUTES.WILLPOWER,
+        difficulty: 12,
+        apCost: 0,
+        success: (chars, state) => {
+          chars.forEach(c => { if (c.alive) c.stress = Math.max(0, c.stress - 5); });
+          return '你閉上眼睛，無視那些聲音。數小時後，濃霧如退潮般散去，甲板上留下幾行濕漉漉的腳印。';
+        },
+        failure: (chars, state) => {
+          chars.forEach(c => { if (c.alive) c.stress = Math.min(100, c.stress + 20); });
+          return '等待是煎熬。你不斷聽見摯愛之人的聲音，但你知道他們不可能在這裡。';
+        }
+      },
+      {
+        text: '走進霧中，追尋聲音的來源',
+        attribute: PLAYER_ATTRIBUTES.INSIGHT,
+        difficulty: 24,
+        apCost: 3,
+        success: (chars, state) => {
+          // 發現隱藏區域或線索
+          state.roomStates = state.roomStates || {};
+          state.roomStates['phantom_hold'] = true;
+          chars.forEach(c => { if (c.alive) c.stress = Math.min(100, c.stress + 10); });
+          return '你跟著聲音穿過迷霧，來到一個從未見過的船艙。裡面堆滿了不屬於這艘船的物品：古老的航海儀器、異教神像、以及一本寫著你名字的日記。';
+        },
+        failure: (chars, state) => {
+          const playerIdx = chars.findIndex(c => c.id === state.playerCard?.id);
+          if (playerIdx !== -1) {
+            chars[playerIdx].alive = false;
+            return '霧中伸出一隻冰冷的手，將你拖入深淵。其他人只聽見一聲短促的驚呼，然後迷霧散去，你已消失無蹤。';
+          }
+          return '你迷失了。';
+        }
+      },
+      {
+        text: '大聲回應，與霧中的存在對話',
+        attribute: PLAYER_ATTRIBUTES.CHARISMA,
+        difficulty: 20,
+        apCost: 2,
+        success: (chars, state) => {
+          chars.forEach(c => { if (c.alive) c.stress = Math.min(100, c.stress + 15); });
+          state.playerKnowledge = state.playerKnowledge || {};
+          state.playerKnowledge['fog_speaker'] = true;
+          return '你與霧中的存在達成了某種協議。它放過了你們，但作為交換，你答應了它一個你尚不明白的條件。';
+        },
+        failure: (chars, state) => {
+          chars.forEach(c => { if (c.alive) c.stress = Math.min(100, c.stress + 30); });
+          return '你的話語激怒了霧中的存在。濃霧中傳來尖叫聲，當霧散去，一名船員消失了。';
+        }
+      }
+    ]
+  },
+
+  // ---------- 6. 神降儀式 ----------
+  {
+    id: 'ritual',
+    name: '🕯️ 神降儀式',
+    category: 'supernatural',
+    getDesc: (state) => {
+      const cultists = state.characters.filter(c => c.alive && (c.persona === PERSONA.PIOUS || c.infection >= 3));
+      if (cultists.length >= 3) {
+        return `甲板上畫滿了詭異的符號。${cultists.map(c => c.name).join('、')} 正圍成一個圓圈，吟唱著不屬於任何已知語言的咒文。他們打算召喚什麼。`;
+      }
+      return '你在貨艙深處發現了一群船員正在進行秘密儀式。祭壇上放著一顆仍在跳動的心臟。';
+    },
+    choices: [
+      {
+        text: '阻止儀式',
+        attribute: PLAYER_ATTRIBUTES.VIGOR,
+        difficulty: 25,
+        apCost: 3,
+        success: (chars, state) => {
+          const cultists = chars.filter(c => c.alive && c.infection >= 2);
+          cultists.forEach(c => { c.alive = false; });
+          chars.forEach(c => { if (c.alive) c.stress = Math.min(100, c.stress + 40); });
+          return '你衝上前去，打翻了祭壇，與狂信者們展開殊死搏鬥。你活了下來，他們沒有。但儀式的打斷似乎觸怒了更深層的存在。';
+        },
+        failure: (chars, state) => {
+          const playerIdx = chars.findIndex(c => c.id === state.playerCard?.id);
+          if (playerIdx !== -1) chars[playerIdx].alive = false;
+          return '你試圖阻止，但被狂信者們制服。你成為了儀式的新祭品。在意識消失前，你看見深淵裂開了一道縫隙。';
+        }
+      },
+      {
+        text: '加入儀式',
+        attribute: PLAYER_ATTRIBUTES.INSIGHT,
+        difficulty: 18,
+        apCost: 2,
+        condition: (state) => state.playerCard?.persona === PERSONA.FATALIST || state.playerCard?.persona === PERSONA.CURIOUS,
+        success: (chars, state) => {
+          chars.forEach(c => { if (c.alive) c.infection = Math.min(5, (c.infection || 0) + 2); });
+          state.abyssLevel = Math.min(100, (state.abyssLevel || 0) + 30);
+          return '你加入吟唱。那一刻，你理解了——你們不是在召喚深淵，而是深淵在透過你們降臨。你獲得了「祝福」，也永遠失去了作為人類的某些部分。';
+        },
+        failure: (chars, state) => {
+          chars.forEach(c => { if (c.alive) c.stress = Math.min(100, c.stress + 50); });
+          return '你無法跟上咒文的節奏，儀式反噬。所有參與者都陷入了短暫的瘋狂。';
+        }
+      },
+      {
+        text: '冷靜觀察，記錄一切',
+        attribute: PLAYER_ATTRIBUTES.WILLPOWER,
+        difficulty: 20,
+        apCost: 2,
+        success: (chars, state) => {
+          state.playerKnowledge = state.playerKnowledge || {};
+          state.playerKnowledge['ritual_notes'] = true;
+          chars.forEach(c => { if (c.alive) c.stress = Math.min(100, c.stress + 20); });
+          return '你躲在暗處，詳細記錄下儀式的每一個細節。這些知識是危險的，但或許也是破解詛咒的關鍵。';
+        },
+        failure: (chars, state) => {
+          chars.forEach(c => { if (c.alive) c.stress = Math.min(100, c.stress + 25); });
+          return '你被發現了。狂信者們轉頭凝視你，眼中閃爍著非人的光芒。';
+        }
+      }
+    ]
+  }
+];
+// ==========================================
+
+// ========== 修改三之一：每日危機事件池 ==========
+const DAILY_CRISIS_POOL = [
+  {
+    id: 'flooding',
+    name: '🌊 船底進水',
+    desc: '貨艙傳來進水的聲音，船匠托馬斯驚慌地跑來報告。如果不及時處理，船隻可能受損。',
+    getDesc: (state) => {
+      const carpenter = state.characters.find(c => c.job === '木匠' && c.alive);
+      if (carpenter) {
+        return `貨艙傳來進水的聲音，${carpenter.name}驚慌地跑來報告。如果不及時處理，船隻可能受損。`;
+      } else {
+        return '貨艙傳來進水的聲音，但沒有人敢下去查看。如果不及時處理，船隻可能受損。';
+      }
+    },
+    choices: [
+      { 
+        text: '前往貨艙協助堵漏（消耗 2 AP）', 
+        attribute: PLAYER_ATTRIBUTES.VIGOR, 
+        difficulty: 14, 
+        apCost: 2,
+        success: (chars, state) => { 
+          chars.forEach(c => { if(c.alive) c.stress = Math.max(0, c.stress - 5); }); 
+          return '你們成功堵住了漏洞。船員們鬆了一口氣。'; 
+        },
+        failure: (chars, state) => { 
+          chars.forEach(c => { if(c.alive) c.stress = Math.min(100, c.stress + 10); }); 
+          return '漏洞比想像中大，你們只能勉強減緩進水。'; 
+        }
+      },
+      { 
+        text: '無視，這不是我的職責', 
+        attribute: null, 
+        difficulty: 0, 
+        apCost: 0,
+        effect: (chars, state) => { 
+          chars.forEach(c => { if(c.alive) c.stress = Math.min(100, c.stress + 15); }); 
+          return '進水越來越嚴重，恐慌在船員間蔓延。'; 
+        }
+      }
+    ]
+  },
+  {
+    id: 'fight',
+    name: '👊 船員鬥毆',
+    desc: '',
+    getDesc: (state) => {
+      const alive = state.characters.filter(c => c.alive && c.id !== state.playerCard?.id);
+      if (alive.length >= 2) {
+        const a = alive[Math.floor(Math.random() * alive.length)];
+        const b = alive.filter(c => c.id !== a.id)[Math.floor(Math.random() * (alive.length - 1))];
+        return `${a.name} 和 ${b.name} 在甲板上扭打在一起，場面混亂。`;
+      } else {
+        return '兩名船員在甲板上打了起來，但當你趕到時，其中一人已經倒在地上。';
+      }
+    },
+    choices: [
+      { 
+        text: '介入調停（消耗 2 AP）', 
+        attribute: PLAYER_ATTRIBUTES.CHARISMA, 
+        difficulty: 16, 
+        apCost: 2,
+        success: (chars, state) => { 
+          chars.forEach(c => { if(c.alive) c.stress = Math.max(0, c.stress - 5); }); 
+          return '你成功分開了兩人，他們雖然怒目相視，但暫時停止了鬥毆。'; 
+        },
+        failure: (chars, state) => { 
+          const alive = chars.filter(c => c.alive);
+          if (alive.length > 0) {
+            const unlucky = alive[Math.floor(Math.random() * alive.length)];
+            unlucky.stress = Math.min(100, unlucky.stress + 25);
+          }
+          return '你的介入反而讓場面更加失控，有人被誤傷。'; 
+        }
+      },
+      { 
+        text: '冷眼旁觀，讓他們自行解決', 
+        attribute: null, 
+        difficulty: 0, 
+        apCost: 0,
+        effect: (chars, state) => { 
+          const alive = chars.filter(c => c.alive);
+          if (alive.length > 1) {
+            const victim = alive[Math.floor(Math.random() * alive.length)];
+            if (Math.random() < 0.3) {
+              victim.alive = false;
+              return `${victim.name} 在鬥毆中被失手殺死。`;
+            } else {
+              victim.stress = Math.min(100, victim.stress + 30);
+              return `${victim.name} 在鬥毆中受了重傷。`;
+            }
+          }
+          return '鬥毆自行平息，但船員之間的仇恨更加深刻。';
+        }
+      }
+    ]
+  },
+  {
+    id: 'hallucination',
+    name: '👁️ 集體幻覺',
+    desc: '多名船員聲稱看見了相同的恐怖景象——一個沒有面孔的人影站在船舷邊。',
+    getDesc: (state) => {
+      const count = state.characters.filter(c => c.alive).length;
+      return `約有 ${Math.floor(count / 2)} 名船員聲稱看見了相同的恐怖景象——一個沒有面孔的人影站在船舷邊。`;
+    },
+    choices: [
+      { 
+        text: '安撫眾人，告訴他們這只是幻覺（消耗 2 AP）', 
+        attribute: PLAYER_ATTRIBUTES.WILLPOWER, 
+        difficulty: 15, 
+        apCost: 2,
+        success: (chars, state) => { 
+          chars.forEach(c => { if(c.alive) c.stress = Math.max(0, c.stress - 10); }); 
+          return '你的冷靜感染了他們，騷動逐漸平息。'; 
+        },
+        failure: (chars, state) => { 
+          chars.forEach(c => { if(c.alive) c.stress = Math.min(100, c.stress + 15); }); 
+          return '你的話語未能安撫他們，恐懼繼續蔓延。'; 
+        }
+      },
+      { 
+        text: '前往船舷邊查看真相', 
+        attribute: PLAYER_ATTRIBUTES.INSIGHT, 
+        difficulty: 18, 
+        apCost: 2,
+        success: (chars, state) => { 
+          chars.forEach(c => { if(c.alive) c.stress = Math.max(0, c.stress - 5); }); 
+          return '你仔細檢查了船舷，除了幾滴來歷不明的海水，什麼也沒有。你向眾人保證一切安全。'; 
+        },
+        failure: (chars, state) => { 
+          chars.forEach(c => { if(c.alive) c.stress = Math.min(100, c.stress + 20); }); 
+          return '當你靠近船舷時，你看見了——那個沒有面孔的人影轉頭「看」了你一眼，然後消失了。你無法再假裝那是幻覺。'; 
+        }
+      },
+      { 
+        text: '不理會，繼續自己的事', 
+        attribute: null, 
+        difficulty: 0, 
+        apCost: 0,
+        effect: (chars, state) => { 
+          chars.forEach(c => { if(c.alive) c.stress = Math.min(100, c.stress + 10); }); 
+          return '恐慌在無視中加劇，沒有人能真正忘記自己看見的東西。'; 
+        }
+      }
+    ]
+  },
+  {
+    id: 'stolen_supplies',
+    name: '📦 物資失竊',
+    desc: '廚師發現儲藏室的淡水與食物短少了一大截。',
+    getDesc: (state) => {
+      const cook = state.characters.find(c => c.job === '廚師' && c.alive);
+      if (cook) {
+        return `${cook.name} 憤怒地報告，儲藏室的淡水與食物短少了一大截。`;
+      } else {
+        return '有人發現儲藏室的淡水與食物短少了一大截，但廚師已經不在了，沒人知道是誰拿走的。';
+      }
+    },
+    choices: [
+      { 
+        text: '調查竊賊（消耗 2 AP）', 
+        attribute: PLAYER_ATTRIBUTES.INSIGHT, 
+        difficulty: 16, 
+        apCost: 2,
+        success: (chars, state) => { 
+          const suspects = chars.filter(c => c.alive && c.id !== state.playerCard?.id);
+          if (suspects.length > 0) {
+            const thief = suspects[Math.floor(Math.random() * suspects.length)];
+            thief.stress = Math.min(100, thief.stress + 30);
+            return `你在 ${thief.name} 的床位下找到了失竊的物資。他聲稱自己是被迫的。`;
+          }
+          return '你找不到明確的證據，但懷疑的種子已經種下。';
+        },
+        failure: (chars, state) => { 
+          chars.forEach(c => { if(c.alive) c.stress = Math.min(100, c.stress + 10); }); 
+          return '你的調查一無所獲，反而引起了船員之間的互相猜忌。'; 
+        }
+      },
+      { 
+        text: '重新分配剩餘物資，息事寧人', 
+        attribute: PLAYER_ATTRIBUTES.CHARISMA, 
+        difficulty: 12, 
+        apCost: 1,
+        success: (chars, state) => { 
+          chars.forEach(c => { if(c.alive) c.stress = Math.max(0, c.stress - 5); }); 
+          return '你公平地分配了剩餘物資，暫時平息了眾怒。'; 
+        },
+        failure: (chars, state) => { 
+          chars.forEach(c => { if(c.alive) c.stress = Math.min(100, c.stress + 10); }); 
+          return '分配過程引發了新的爭吵，每個人都覺得自己拿得太少。'; 
+        }
+      },
+      { 
+        text: '什麼都不做', 
+        attribute: null, 
+        difficulty: 0, 
+        apCost: 0,
+        effect: (chars, state) => { 
+          chars.forEach(c => { if(c.alive) c.stress = Math.min(100, c.stress + 15); }); 
+          return '飢餓與猜忌在船員之間蔓延。'; 
+        }
+      }
+    ]
+  }
+];
+// ========== 修改三之一結束 ==========
+
 const SEARCH_OBSTACLE_EVENTS = [
   { id: 'door_jammed', text: '房間門因潮濕變形無法打開', fixAttempt: '需消耗2 AP強行撞開，需體魄檢定' },
   { id: 'rat_swarm', text: '老鼠群瘋狂竄出，嚇得你跳了起來', fixAttempt: '需意志檢定保持鎮定，否則本次搜查無效' },
@@ -2157,6 +2827,21 @@ const evaluateRoleplayCompliance = (prevState, nextState) => {
   const logs = [];
   const actions = (prevState.dailyActions || []).filter(a => a.day === prevState.day);
   let chars = [...nextState.characters];
+  // ========== 修改四：無所事事懲罰 ==========
+  const actionsAll = prevState.dailyActions || [];
+  const hasSearched = actionsAll.some(a => a.type === 'investigate');
+  const playerIdx = chars.findIndex(c => c.id === prevState.playerCard?.id);
+  if (playerIdx !== -1 && !hasSearched && prevState.phase === '白天') {
+    chars[playerIdx].stress = Math.min(100, chars[playerIdx].stress + 10);
+    logs.push({
+      id: generateId(),
+      day: nextState.day,
+      phase: '清晨',
+      msg: '【停滯的詛咒】你昨日沒有搜查任何地方。深淵的低語因你的被動而加劇。（壓力 +10）',
+      type: 'alert'
+    });
+  }
+  // ========== 修改四結束 ==========
   const playerId = prevState.playerCard?.id;
   const playerPersona = prevState.playerCard?.persona;
   const day = nextState.day;
@@ -2370,6 +3055,73 @@ const performInterrogationCheck = (playerCharisma, targetStress, targetTrust = 0
 const performFearResistCheck = (playerWillpower, eventIntensity = 10) => {
   return performSkillCheck(60, eventIntensity, playerWillpower);
 };
+
+// ======= MajorEventChoiceButton helper component =======
+const MajorEventChoiceButton = ({ choice, event, gameState, setGameState, setMajorEvent, triggerDiceAnimation }) => {
+  const isDisabled = gameState.ap < (choice.apCost || 0);
+  const handleClick = () => {
+    if (isDisabled) {
+      alert(`AP 不足！需要 ${choice.apCost} AP`);
+      return;
+    }
+    setGameState(prev => {
+      let chars = [...prev.characters];
+      let logsToAdd = [];
+      let resultMsg = '';
+      const newAp = Math.max(0, prev.ap - (choice.apCost || 0));
+
+      if (choice.attribute && choice.difficulty > 0) {
+        const playerAttr = prev.playerAttributes[choice.attribute] || 3;
+        const check = performSkillCheck(50, choice.difficulty, playerAttr);
+        triggerDiceAnimation(check, `大型事件：${event.name}`);
+        if (check.success) {
+          resultMsg = choice.success(chars, prev);
+        } else {
+          resultMsg = choice.failure(chars, prev);
+        }
+        logsToAdd.push({
+          id: generateId(), day: prev.day, phase: prev.phase,
+          msg: `【大型事件】${resultMsg} [檢定 ${check.message}]`,
+          type: check.success ? 'success' : 'fatal'
+        });
+      } else {
+        resultMsg = choice.effect ? choice.effect(chars, prev) : '你選擇了該選項。';
+        logsToAdd.push({ id: generateId(), day: prev.day, phase: prev.phase, msg: `【大型事件】${resultMsg}`, type: 'alert' });
+      }
+
+      if (event.aftermath) event.aftermath(prev, choice);
+
+      return {
+        ...prev,
+        characters: chars,
+        ap: newAp,
+        logs: [...prev.logs, ...logsToAdd],
+        dailyActions: [...(prev.dailyActions || []), { type: 'major_event', eventId: event.id, day: prev.day }]
+      };
+    });
+    setMajorEvent(null);
+  };
+
+  return (
+    <button onClick={handleClick} disabled={isDisabled}
+      className={`w-full text-left p-4 rounded-lg border transition ${
+        isDisabled ? 'bg-[#1a1510] border-[#3a2e22] text-[#5a4e3e] cursor-not-allowed' : 'bg-[#1a1510] border-[#3a2e22] hover:border-red-800 hover:bg-[#2a1a1a] text-[#d4c4a8]'
+      }`}>
+      <div className="flex justify-between items-center">
+        <span className="font-bold text-[#d4af37]">{choice.text}</span>
+        {choice.apCost > 0 && (
+          <span className={`text-xs px-2 py-1 rounded ${isDisabled ? 'bg-[#3a2e22] text-[#5a4e3e]' : 'bg-blue-900/50 text-blue-300'}`}>
+            消耗 {choice.apCost} AP
+          </span>
+        )}
+      </div>
+      {choice.attribute && (
+        <p className="text-xs text-[#8b795e] mt-1">檢定屬性：{choice.attribute} (難度 {choice.difficulty})</p>
+      )}
+    </button>
+  );
+};
+
 
 // 生成開場敘事
 const getSelectedPrologue = (variantId) => {
@@ -2690,6 +3442,7 @@ function SantaMaria() {
     isAbyssalLament: false,
     voteErrors: 0,
     isGameOver: false,
+    victoryType: null,
     prologueVariant: null,
     playerKnowledge: {}, // 追踪玩家已获知的信息
     dailyActions: [], // 用於記錄當日玩家行為以便法則結算
@@ -2701,6 +3454,7 @@ function SantaMaria() {
     allocatedAttributes: {},
     freeAttributePoints: 0,
     selectedLaw: null,
+    hasRestedToday: false,
   });
 
   const [logFilter, setLogFilter] = useState('ALL');
@@ -2710,6 +3464,19 @@ function SantaMaria() {
   const [activeRoom, setActiveRoom] = useState(null);
   const [activeSpecialEvent, setActiveSpecialEvent] = useState(null);
   const logsEndRef = useRef(null);
+
+  // ========== 修改三之二：每日危機狀態 ==========
+  const [dailyCrisis, setDailyCrisis] = useState(null);
+  const [majorEvent, setMajorEvent] = useState(null);
+  // ========== 修改三之二結束 ==========
+
+  // 監聽 pendingMajorEvent，將其搬到 local state 並清除 gameState.pendingMajorEvent
+  useEffect(() => {
+    if (gameState && gameState.pendingMajorEvent) {
+      setMajorEvent(gameState.pendingMajorEvent);
+      setGameState(prev => ({ ...prev, pendingMajorEvent: null }));
+    }
+  }, [gameState && gameState.pendingMajorEvent]);
 
   // Quick nav dropdown state + ref for click-outside
   const [quickNavOpen, setQuickNavOpen] = useState(false);
@@ -2733,7 +3500,8 @@ function SantaMaria() {
   // Trial UI state
   const [trialOpen, setTrialOpen] = useState(false);
   const [trialPlayerSelection, setTrialPlayerSelection] = useState(null);
-  const [trialPreviewVotes, setTrialPreviewVotes] = useState({}); // candidateId -> count
+  const [trialPreviewVotes, setTrialPreviewVotes] = useState({}); // candidateId -> count (revealed during reveal)
+  const [trialSimulatedTally, setTrialSimulatedTally] = useState({}); // full simulated tally, hidden until reveal
   const [trialRevealOrder, setTrialRevealOrder] = useState([]); // ordered voter ids for animation
   const [trialAnimating, setTrialAnimating] = useState(false);
   // 政治行動暫存選擇（用下拉取代 prompt）
@@ -2750,6 +3518,7 @@ function SantaMaria() {
     completed: false
   });
   const [showTutorialHelp, setShowTutorialHelp] = useState(false);
+  const [tutorialModal, setTutorialModal] = useState(false);
   const tutorialFlagsRef = useRef(tutorialFlags);
 
   // --- Audio hook usage ---
@@ -2763,6 +3532,9 @@ function SantaMaria() {
   // ==========================================
   const generateEnding = (state) => {
     const { playerCard, truths, characters, isGameOver, phase } = state;
+    if (state.victoryType === 'escape') {
+      return `【信號獲救】${playerCard?.name || '你'} 成功發出了求救信號。當晨霧散去，遠方桅杆的輪廓回應了你的呼喊。你活下來了，但聖瑪利亞號的低語仍會在夢中追上你。`;
+    }
     const playerAlive = characters.find(c => c.id === playerCard?.id)?.alive;
     const avgStress = characters.filter(c => c.alive).reduce((sum, c) => sum + c.stress, 0) / Math.max(1, characters.filter(c => c.alive).length);
     const resolvedTruths = truths.filter(t => t.resolved).length;
@@ -2807,6 +3579,9 @@ function SantaMaria() {
       }
     });
 
+    if (state.victoryType === 'escape') {
+      epilogue += '\n【回收紀錄】求救信號已被外海船隻接收。你留下的日誌，成了這趟詛咒航行唯一完整的見證。\n';
+    }
     // 隱藏結局條件簡述
     if (state.abyssLevel >= 100) {
       epilogue += '\n【深淵降臨】深淵吞噬了世界。你的名字與這艘船同在世紀的深處。\n';
@@ -2930,6 +3705,7 @@ function SantaMaria() {
       firstTrial: true,
       completed: true
     });
+    setTutorialModal(false);
     setShowTutorialHelp(false);
   }, []);
 
@@ -2965,11 +3741,15 @@ function SantaMaria() {
 
   // click-outside handler for quick nav (separate effect; depends on quickNavOpen)
   useEffect(() => {
-    const handleDocClick = (e) => {
-      if (quickNavOpen && quickNavRef.current && !quickNavRef.current.contains(e.target)) setQuickNavOpen(false);
+    const handleClickOutside = (event) => {
+      if (quickNavRef.current && !quickNavRef.current.contains(event.target)) {
+        setQuickNavOpen(false);
+      }
     };
-    if (quickNavOpen) document.addEventListener('click', handleDocClick);
-    return () => document.removeEventListener('click', handleDocClick);
+    if (quickNavOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [quickNavOpen]);
 
   // 開場文本：顯示完畢後觸發初始化日誌與夜間推演（替代打字機完成回調）
@@ -3179,8 +3959,31 @@ function SantaMaria() {
         const infectionMultiplier = (prev.abyssLevel >= 50) ? 2 : 1;
         chars.forEach(c => { if (c.alive && c.location === victim.location) c.infection = Math.min(5, (c.infection || 0) + infectionMultiplier); });
 
-        const targetSpot = getRandomUnsearchedSpot(newRoomClues, prev.searchedSpots);
-        if (targetSpot) newRoomClues[targetSpot.roomId][targetSpot.spotId] = { type: 'journal', author: victim.name, text: generateDeadNPCJournal(victim) };
+        // ========== 修改一：死者日記強制生成 ==========
+        let targetSpot = getRandomUnsearchedSpot(newRoomClues, prev.searchedSpots);
+        if (!targetSpot) {
+          // 找不到未搜查點，強制選擇該房間的第一個點位
+          const room = LOCATIONS.find(l => l.id === victim.location);
+          if (room && room.spots.length > 0) {
+            const forcedSpot = room.spots[0];
+            targetSpot = { roomId: room.id, spotId: forcedSpot.id };
+            // 重置該點位的搜查狀態（讓玩家可以再次搜查）
+            const key = `${targetSpot.roomId}_${targetSpot.spotId}`;
+            prev.searchedSpots[key] = false;
+          } else {
+            // 極端情況：房間不存在或無點位，跳過日記生成
+            console.warn(`無法為死者 ${victim.name} 生成日記：房間 ${victim.location} 無可用點位`);
+            targetSpot = null;
+          }
+        }
+        if (targetSpot) {
+          newRoomClues[targetSpot.roomId][targetSpot.spotId] = {
+            type: 'journal',
+            author: victim.name,
+            text: generateDeadNPCJournal(victim)
+          };
+        }
+        // ========== 修改一結束 ==========
 
         if (!isFirstNight && !isCopycat) {
           const room = LOCATIONS.find(l => l.id === victim.location);
@@ -3263,6 +4066,7 @@ function SantaMaria() {
       const nextDay = isFirstNight ? 1 : prev.day + 1;
 
       if (nextDay === 1 && !tutorialFlagsRef.current.completed) {
+        setTutorialModal(true);
         logsToAdd.push({
           id: generateId(),
           day: 1,
@@ -3342,6 +4146,7 @@ function SantaMaria() {
         dailyActions: [], // 每日行為紀錄重置
         abyssLevel: newAbyss,
         playerAttributes: newPlayerAttributes,
+        hasRestedToday: false,
         activePersonalQuest: questToSet,
         personalQuests: prev.personalQuests ? [...prev.personalQuests] : [],
         completedPersonalQuests: prev.completedPersonalQuests ? [...prev.completedPersonalQuests] : [],
@@ -3392,11 +4197,93 @@ function SantaMaria() {
         }
       });
 
+      // ========== 修改二：深淵擾動刷新搜查點 ==========
+      // 根據深淵侵蝕度決定刷新數量
+      const abyssLevelForRefresh = prev.abyssLevel || 0;
+      const refreshCount = Math.min(5, Math.floor(abyssLevelForRefresh / 25) + 1); // 侵蝕 25 以上開始刷新，最多每日 5 個
+      const searchedKeys = Object.keys(prev.searchedSpots || {}).filter(k => prev.searchedSpots[k]);
+      const toRefresh = searchedKeys.sort(() => 0.5 - Math.random()).slice(0, refreshCount);
+
+      // 環境線索池（純氛圍，不影響主線推理）
+      const ambientClues = [
+        "木板的紋路似乎扭曲成了某種文字……但當你眨眼，一切恢復原狀。",
+        "這裡殘留著淡淡的鹽漬，形狀像一隻手的印記。",
+        "你聞到一股不屬於此處的腐敗花香。",
+        "牆角的陰影比昨日更深，彷彿在緩緩呼吸。",
+        "地板上出現了幾道濕漉漉的拖痕，盡頭卻什麼也沒有。",
+        "你發現一枚不屬於任何船員的鈕扣，上面刻著從未見過的符號。",
+        "這片區域的空氣比其他地方更冷，你的呼吸凝結成白霧。"
+      ];
+
+      toRefresh.forEach(key => {
+        const [roomId, spotId] = key.split('_');
+        // 重置搜查狀態
+        prev.searchedSpots[key] = false;
+        // 如果該點位目前沒有線索，則生成一個環境線索
+        if (!newRoomClues[roomId] || !newRoomClues[roomId][spotId]) {
+          if (!newRoomClues[roomId]) newRoomClues[roomId] = {};
+          newRoomClues[roomId][spotId] = {
+            type: 'ambient',
+            text: ambientClues[Math.floor(Math.random() * ambientClues.length)]
+          };
+        }
+      });
+
+      if (toRefresh.length > 0) {
+        logsToAdd.push({
+          id: generateId(),
+          day: nextState.day,
+          phase: '清晨',
+          msg: `【深淵擾動】你感覺到船上的空間正在被侵蝕……有些地方產生了新的變化。（${toRefresh.length} 處搜查點已刷新）`,
+          type: 'alert'
+        });
+      }
+      // ========== 修改二結束 ==========
+
+      // ========== 大型事件觸發檢查 ==========
+      const shouldTriggerMajorEvent = !isFirstNight && Math.random() < (0.2 + (prev.abyssLevel || 0) / 200);
+      if (shouldTriggerMajorEvent && typeof MAJOR_EVENTS_POOL !== 'undefined') {
+        const availableEvents = MAJOR_EVENTS_POOL.filter(event => {
+          // 可在此加入條件過濾，例如特定事件需滿足深淵侵蝕度
+          return true;
+        });
+        if (availableEvents.length > 0) {
+          const selectedEvent = availableEvents[Math.floor(Math.random() * availableEvents.length)];
+          // 將事件存入 nextState，交由 UI 處理
+          nextState.pendingMajorEvent = selectedEvent;
+        }
+      }
+      // ========================================
+
       return nextState;
     });
   }, []);
 
-  const handleNightTransition = () => simulateNightLogic(false);
+  // ========== 修改三之三：夜間推演後觸發危機檢查 ==========
+  const handleNightTransition = () => {
+    simulateNightLogic(false);
+    // 在狀態更新後檢查危機（使用 setTimeout 確保 state 已更新）
+    setTimeout(() => {
+      setGameState(prev => {
+        // 僅在白天且非第一天時觸發
+        if (prev.phase === '白天' && prev.day > 1 && !prev.isGameOver) {
+          // 80% 機率觸發危機
+          if (Math.random() < 0.8) {
+            // 過濾掉涉及已死 NPC 導致無法進行的事件
+            const availableCrises = DAILY_CRISIS_POOL.filter(crisis => {
+              return true;
+            });
+            if (availableCrises.length > 0) {
+              const selected = availableCrises[Math.floor(Math.random() * availableCrises.length)];
+              setDailyCrisis(selected);
+            }
+          }
+        }
+        return prev;
+      });
+    }, 100);
+  };
+  // ========== 修改三之三結束 ==========
 
   // --- 互動系統 ---
   const handleInvestigateSpot = (spot) => {
@@ -3659,10 +4546,17 @@ function SantaMaria() {
       const logMsg = type === 'belief' ? 
         `【詢問】詢問 ${char.name} 對真兇的看法。[檢定 ${checkResult.message}]` : 
         `【質問】質問了 ${char.name} 的行蹤。[檢定 ${checkResult.message}]`;
+      const testimonyLog = {
+        id: generateId(),
+        day: prev.day,
+        phase: prev.phase,
+        msg: `【證詞：${char.name}】「${responseText.substring(0, 100)}${responseText.length > 100 ? '…' : ''}」`,
+        type: 'testimony'
+      };
 
       const bark = getPlayerBark('interrogate', checkResult.success ? 'success' : 'fail', { player: prev.playerCard, target: chars[idx], room: LOCATIONS.find(l=>l.id===activeRoom), gameState: prev });
 
-      return { ...prev, ap: prev.ap - 1, characters: chars, playerKnowledge: newKnowledge, logs: [...prev.logs, { id: generateId(), day: prev.day, phase: prev.phase, msg: logMsg, type: 'normal' }, { id: generateId(), day: prev.day, phase: prev.phase, msg: bark, type: 'bark' }], dailyActions: [...(prev.dailyActions||[]), { type: 'interrogate', targetId: char.id, day: prev.day }] };
+      return { ...prev, ap: prev.ap - 1, characters: chars, playerKnowledge: newKnowledge, logs: [...prev.logs, { id: generateId(), day: prev.day, phase: prev.phase, msg: logMsg, type: 'normal' }, testimonyLog, { id: generateId(), day: prev.day, phase: prev.phase, msg: bark, type: 'bark' }], dailyActions: [...(prev.dailyActions||[]), { type: 'interrogate', targetId: char.id, day: prev.day }] };
     });
   };
 
@@ -3976,10 +4870,11 @@ function SantaMaria() {
       tmpVotes[voter.id] = best ? best.id : 'abstain';
       reveal.push(voter.id);
     });
-    // tally
+    // tally (store simulated tally but DO NOT expose it until reveal)
     const tally = {};
     Object.values(tmpVotes).forEach(v => { tally[v] = (tally[v]||0) + 1; });
-    setTrialPreviewVotes(tally);
+    setTrialSimulatedTally(tally);
+    setTrialPreviewVotes({});
     setTrialRevealOrder(reveal);
     setTrialPlayerSelection(null);
     setTrialOpen(true);
@@ -4010,8 +4905,8 @@ function SantaMaria() {
       });
       const chosen = best ? best.id : 'abstain';
       revealed[voterId] = chosen;
-      // increment visual tally
-      setTrialPreviewVotes(prev => ({ ...(prev||{}), [chosen]: (prev && prev[chosen] ? prev[chosen] : 0) }));
+      // increment visual tally (revealed progressively)
+      setTrialPreviewVotes(prev => ({ ...(prev||{}), [chosen]: (prev && prev[chosen] ? prev[chosen] : 0) + 1 }));
       // small visual hook: add a log indicating reveal
       setGameState(prev => ({ ...prev, logs: [...prev.logs, { id: generateId(), day: prev.day, phase: '黃昏', msg: `【投票】${voter.name} 投票給 ${chosen === 'abstain' ? '棄票' : (gameState.characters.find(c=>c.id===chosen)?.name || chosen) }。`, type: 'normal' }] }));
       idx += 1;
@@ -4026,6 +4921,7 @@ function SantaMaria() {
     setTrialAnimating(false);
     setTrialPreviewVotes({});
     setTrialRevealOrder([]);
+    setTrialSimulatedTally({});
     // call existing runTrialPhase which will perform full resolution and logging
     setGameState(prev => runTrialPhase(prev, playerChoice));
   };
@@ -4091,12 +4987,12 @@ function SantaMaria() {
   const handleMouseDown = (e) => { if (gameState.phase === '序幕' || gameState.phase === '身分揭曉' || gameState.phase === '屬性分配' || view !== 'EXPLORE' || activeRoom !== null) return; setIsDragging(true); setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y }); };
   const handleMouseMove = (e) => { if (!isDragging) return; setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y }); };
   const handleMouseUp = () => setIsDragging(false);
-  const handleWheel = (e) => { if (gameState.phase === '序幕' || gameState.phase === '身分揭曉' || gameState.phase === '屬性分配' || view !== 'EXPLORE' || activeRoom !== null) return; e.preventDefault(); setScale(s => Math.min(Math.max(s - e.deltaY * 0.001, 0.4), 2.5)); };
-  useEffect(() => { const el = mapRef.current; if (el) { el.addEventListener('wheel', handleWheel, { passive: false }); return () => el.removeEventListener('wheel', handleWheel); } }, [view, gameState.phase, activeRoom]);
+  const handleWheel = (e) => { if (gameState.phase === '序幕' || gameState.phase === '身分揭曉' || gameState.phase === '屬性分配' || view !== 'EXPLORE' || activeRoom !== null || trialOpen) return; e.preventDefault(); setScale(s => Math.min(Math.max(s - e.deltaY * 0.001, 0.4), 2.5)); };
+  useEffect(() => { const el = mapRef.current; if (el) { el.addEventListener('wheel', handleWheel, { passive: false }); return () => el.removeEventListener('wheel', handleWheel); } }, [view, gameState.phase, activeRoom, trialOpen]);
 
   const filteredLogs = gameState.logs.filter(log => {
     if (logFilter === 'ALL') return true;
-    return ['fatal', 'death', 'success', 'alert'].includes(log.type);
+    return ['fatal', 'death', 'success', 'alert', 'testimony'].includes(log.type);
   });
   const tutorialTargetRoomId = gameState.truths?.[0]?.location || 'captain';
   const tutorialTargetLoc = LOCATIONS.find(l => l.id === tutorialTargetRoomId) || LOCATIONS.find(l => l.id === 'captain');
@@ -4378,6 +5274,19 @@ function SantaMaria() {
           </div>
           <div className="text-xs text-[#8b795e] mt-1">{gameState.abyssLevel}/100</div>
         </div>
+        {gameState.inventory.items.length > 0 && gameState.phase === '白天' && (
+          <div className="p-3 border-b border-[#3a2e22]">
+            <select
+              onChange={(e) => { if (e.target.value) useItem(e.target.value); e.target.value = ''; }}
+              className="w-full bg-[#1a1510] border border-[#3a2e22] text-sm p-2 rounded text-[#d4c4a8]"
+            >
+              <option value="">使用物品...</option>
+              {gameState.inventory.items.map(item => (
+                <option key={`item-use-${item.id}`} value={item.id}>{item.name} x{item.qty}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Navigation */}
         <nav className="flex-1 p-3 space-y-2">
@@ -4388,6 +5297,41 @@ function SantaMaria() {
 
         {/* Actions */}
         <div className="p-4 border-t border-[#3a2e22] space-y-3">
+          {gameState.phase === '白天' && !gameState.hasRestedToday && gameState.ap < 5 && (
+            <button
+              onClick={() => setGameState(prev => ({
+                ...prev,
+                ap: Math.min(9, prev.ap + 2),
+                hasRestedToday: true,
+                logs: [...prev.logs, { id: generateId(), day: prev.day, phase: prev.phase, msg: '你短暫休息了一會兒，恢復了 2 點 AP。', type: 'success' }]
+              }))}
+              className="w-full bg-[#1a2a1a] hover:bg-[#2a3a2a] text-green-400 border border-green-800 p-3 rounded-lg transition text-sm font-bold flex justify-center items-center"
+            >
+              休息 (+2 AP)
+            </button>
+          )}
+          {gameState.phase === '白天' && (() => {
+            const resolvedTruths = gameState.truths.filter(t => t.resolved).length;
+            const totalTruths = gameState.truths.length;
+            const canWin = totalTruths > 0 && resolvedTruths >= totalTruths && gameState.characters.filter(c => c.alive).length >= 3;
+            if (!canWin) return null;
+            return (
+              <button
+                onClick={() => {
+                  setGameState(prev => ({
+                    ...prev,
+                    isGameOver: true,
+                    phase: '結束',
+                    victoryType: 'escape',
+                    logs: [...prev.logs, { id: generateId(), day: prev.day, phase: '白天', msg: '【勝利】你成功發出了求救信號。遠處的地平線上出現了一艘船的影子。你獲救了。', type: 'success' }]
+                  }));
+                }}
+                className="w-full bg-green-950/80 hover:bg-green-900 text-green-300 border border-green-700 p-3 rounded-lg transition text-sm font-bold shadow-lg flex justify-center items-center"
+              >
+                發出求救信號 (勝利)
+              </button>
+            );
+          })()}
           {gameState.phase === '白天' && (
             <button onClick={() => setGameState(p => ({ ...p, phase: '黃昏' }))} className="w-full bg-[#1f1912] hover:bg-[#2a2218] text-[#8b795e] border border-[#4a3b2c] p-3 rounded-lg transition text-sm font-bold shadow-lg flex justify-center items-center">
               結束白天 <SkipForward className="w-4 h-4 ml-2"/>
@@ -4848,6 +5792,151 @@ function SantaMaria() {
             </div>
           )}
 
+          {/* ========== 修改三之四：每日危機對話框 ========== */}
+          {dailyCrisis && gameState.phase === '白天' && (
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="w-full max-w-2xl bg-[#16120e] border-2 border-orange-800 rounded-xl shadow-2xl">
+                <div className="bg-orange-950/80 p-4 border-b border-orange-800 flex items-center justify-between">
+                  <h2 className="text-2xl font-bold text-orange-400 flex items-center"><AlertTriangle className="w-6 h-6 mr-2" /> 船內危機：{dailyCrisis.name}</h2>
+                  <button 
+                    onClick={() => setDailyCrisis(null)} 
+                    className="text-orange-300 hover:text-white"
+                  >
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+                <div className="p-6">
+                  <p className="text-lg text-[#d4c4a8] leading-relaxed mb-6">
+                    {dailyCrisis.getDesc ? dailyCrisis.getDesc(gameState) : dailyCrisis.desc}
+                  </p>
+                  <div className="space-y-3">
+                    {dailyCrisis.choices.map((choice, idx) => {
+                      const isDisabled = gameState.ap < (choice.apCost || 0);
+                      return (
+                        <button
+                          key={idx}
+                          onClick={() => {
+                            if (isDisabled) {
+                              alert(`AP 不足！需要 ${choice.apCost} AP`);
+                              return;
+                            }
+                            
+                            setGameState(prev => {
+                              let chars = [...prev.characters];
+                              let logsToAdd = [];
+                              let resultMsg = '';
+                              
+                              // 扣 AP
+                              const newAp = Math.max(0, prev.ap - (choice.apCost || 0));
+                              
+                              if (choice.attribute && choice.difficulty > 0) {
+                                // 需要檢定
+                                const playerAttr = prev.playerAttributes[choice.attribute] || 3;
+                                const check = performSkillCheck(50, choice.difficulty, playerAttr);
+                                triggerDiceAnimation(check, `危機處理：${dailyCrisis.name}`);
+                                
+                                if (check.success) {
+                                  resultMsg = choice.success(chars, prev);
+                                } else {
+                                  resultMsg = choice.failure(chars, prev);
+                                }
+                                logsToAdd.push({
+                                  id: generateId(),
+                                  day: prev.day,
+                                  phase: prev.phase,
+                                  msg: `【危機處理】${resultMsg} [檢定 ${check.message}]`,
+                                  type: check.success ? 'success' : 'alert'
+                                });
+                              } else {
+                                // 無檢定，直接執行效果
+                                if (choice.effect) {
+                                  resultMsg = choice.effect(chars, prev);
+                                } else {
+                                  resultMsg = '你選擇了無視這個危機。';
+                                }
+                                logsToAdd.push({
+                                  id: generateId(),
+                                  day: prev.day,
+                                  phase: prev.phase,
+                                  msg: `【危機處理】${resultMsg}`,
+                                  type: 'alert'
+                                });
+                              }
+                              
+                              // 關閉對話框
+                              setDailyCrisis(null);
+                              
+                              return {
+                                ...prev,
+                                characters: chars,
+                                ap: newAp,
+                                logs: [...prev.logs, ...logsToAdd],
+                                dailyActions: [...(prev.dailyActions || []), { type: 'crisis', crisisId: dailyCrisis.id, day: prev.day }]
+                              };
+                            });
+                          }}
+                          disabled={isDisabled}
+                          className={`w-full text-left p-4 rounded-lg border transition ${
+                            isDisabled 
+                              ? 'bg-[#1a1510] border-[#3a2e22] text-[#5a4e3e] cursor-not-allowed' 
+                              : 'bg-[#1a1510] border-[#3a2e22] hover:border-orange-700 hover:bg-[#2a2218] text-[#d4c4a8]'
+                          }`}
+                        >
+                          <div className="flex justify-between items-center">
+                            <span className="font-bold text-[#d4af37]">{choice.text}</span>
+                            {choice.apCost > 0 && (
+                              <span className={`text-xs px-2 py-1 rounded ${isDisabled ? 'bg-[#3a2e22] text-[#5a4e3e]' : 'bg-blue-900/50 text-blue-300'}`}>
+                                消耗 {choice.apCost} AP
+                              </span>
+                            )}
+                          </div>
+                          {choice.attribute && (
+                            <p className="text-xs text-[#8b795e] mt-1">
+                              檢定屬性：{choice.attribute} (難度 {choice.difficulty})
+                            </p>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-[#8b795e] mt-4 text-center">
+                    你也可以直接關閉此視窗來暫時擱置，但危機不會消失。
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          {/* ========== 修改三之四結束 ========== */}
+
+          {/* ========== 大型事件對話框 ========== */}
+          {majorEvent && (
+            <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+              <div className="w-full max-w-3xl bg-[#0d0a08] border-4 border-double border-[#8b0000] rounded-xl shadow-2xl">
+                <div className="bg-[#2a0a0a] p-5 border-b-2 border-[#8b0000]">
+                  <h2 className="text-3xl font-black text-red-400 tracking-wider font-serif">{majorEvent.name}</h2>
+                  <p className="text-sm text-red-300/70 mt-1">深淵凝視著你的抉擇</p>
+                </div>
+                <div className="p-6">
+                  <p className="text-lg text-[#d4c4a8] leading-relaxed mb-6 font-serif border-l-4 border-[#8b0000] pl-4">
+                    {typeof majorEvent.getDesc === 'function' ? majorEvent.getDesc(gameState) : majorEvent.desc}
+                  </p>
+                  <div className="space-y-3">
+                    {majorEvent.getVariants && majorEvent.getVariants(gameState).map((variant, idx) => (
+                      <MajorEventChoiceButton key={`var-${idx}`} choice={variant} event={majorEvent} gameState={gameState} setGameState={setGameState} setMajorEvent={setMajorEvent} triggerDiceAnimation={triggerDiceAnimation} />
+                    ))}
+                    {majorEvent.choices && majorEvent.choices.map((choice, idx) => {
+                      if (choice.condition && !choice.condition(gameState)) return null;
+                      return (
+                        <MajorEventChoiceButton key={`fix-${idx}`} choice={choice} event={majorEvent} gameState={gameState} setGameState={setGameState} setMajorEvent={setMajorEvent} triggerDiceAnimation={triggerDiceAnimation} />
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          {/* ========== 大型事件對話框 結束 ========== */}
+
           {/* Central Dialog Overlay */}
           {activeDialog && (gameState.phase === '白天' || activeDialog.isDiscovery || activeDialog.isObstacle) && (
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
@@ -4997,6 +6086,24 @@ function SantaMaria() {
             </div>
           )}
 
+          {tutorialModal && (
+            <div className="absolute inset-0 bg-black/80 z-[100] flex items-center justify-center p-4">
+              <div className="bg-[#16120e] border-2 border-[#d4af37] p-8 rounded-xl max-w-md text-center">
+                <h3 className="text-2xl text-[#d4af37] mb-4">航海日誌 · 第一天</h3>
+                <p className="text-[#d4c4a8] mb-6 leading-relaxed">
+                  死者最後出現在 <strong className="text-yellow-400">{LOCATIONS.find(l => l.id === gameState.truths[0]?.location)?.name || '船長室'}</strong>。<br/>
+                  你應該立刻前往該處搜查線索，並質問在場的船員。
+                </p>
+                <button
+                  onClick={() => setTutorialModal(false)}
+                  className="bg-[#d4af37] text-[#0a0806] px-6 py-2 rounded font-bold hover:bg-[#fcd34d] transition"
+                >
+                  明白了，前往現場
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Game Over Ending Panel */}
           {gameState.isGameOver && (
             <div className="absolute inset-0 bg-black/90 z-50 flex items-center justify-center p-8">
@@ -5014,8 +6121,8 @@ function SantaMaria() {
 
           {/* Trial Modal Overlay */}
           {trialOpen && (
-            <div className="absolute inset-0 bg-black/80 z-60 flex items-center justify-center p-6">
-              <div className="w-full max-w-4xl bg-[#0f0d0b] border-2 border-[#d4af37] rounded-xl shadow-2xl p-6">
+            <div className="absolute inset-0 bg-black/80 z-[300] flex items-center justify-center p-6 pt-[4.5rem]">
+              <div className="w-full max-w-4xl bg-[#0f0d0b] border-2 border-[#d4af37] rounded-xl shadow-2xl p-6 max-h-[80vh] overflow-auto">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-2xl font-bold text-[#d4af37]">⚖️ 審判面板 — 黃昏</h3>
                   <div className="flex items-center gap-2">
@@ -5072,12 +6179,12 @@ function SantaMaria() {
                   <div className="bg-[#14110f] p-4 rounded border border-[#2a2218]">
                     <h4 className="text-sm font-bold text-[#d4af37] mb-3">政治行動面板</h4>
                     <div className="space-y-2">
-                      <div className="flex gap-2 mb-2">
-                        <select value={politicalTarget} onChange={(e) => setPoliticalTarget(e.target.value)} className="flex-1 bg-[#0d0a08] border border-[#2a2218] text-sm text-[#d4c4a8] px-2 py-1 rounded">
+                      <div className="flex gap-2 mb-2" style={{ overflow: 'visible' }}>
+                        <select value={politicalTarget} onChange={(e) => setPoliticalTarget(e.target.value)} className="flex-1 bg-[#0d0a08] border border-[#2a2218] text-sm text-[#d4c4a8] px-2 py-1 rounded w-full max-w-full relative z-[310]">
                           <option value="">-- 選擇拉票目標 NPC --</option>
                           {gameState.characters.filter(ch => ch.alive).map(ch => (<option key={`pt-${ch.id}`} value={ch.id}>{ch.name}</option>))}
                         </select>
-                        <select value={politicalAlly} onChange={(e) => setPoliticalAlly(e.target.value)} className="flex-1 bg-[#0d0a08] border border-[#2a2218] text-sm text-[#d4c4a8] px-2 py-1 rounded">
+                        <select value={politicalAlly} onChange={(e) => setPoliticalAlly(e.target.value)} className="flex-1 bg-[#0d0a08] border border-[#2a2218] text-sm text-[#d4c4a8] px-2 py-1 rounded w-full max-w-full relative z-[310]">
                           <option value="">-- 選擇招攬盟友 NPC --</option>
                           {gameState.characters.filter(ch => ch.alive).map(ch => (<option key={`pa-${ch.id}`} value={ch.id}>{ch.name}</option>))}
                         </select>
