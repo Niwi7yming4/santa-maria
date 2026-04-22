@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>聖瑪利亞號 - 官方介紹與登船評估</title>
+    
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入思源宋體 -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <!-- 引入 React 與 ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- 引入 Babel 轉換 JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- 引入 html2canvas 用於匯出圖片 -->
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+
+    <style>
+        body { 
+            font-family: 'Noto Serif TC', serif; 
+            background-color: #030202; 
+            color: #d4c5b0;
+            overflow-x: hidden;
+        }
+        
+        /* 迷霧背景 */
+        .fog {
+            position: fixed; top: 0; left: 0; width: 200vw; height: 100vh;
+            background: url('data:image/svg+xml;utf8,<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><filter id="noise"><feTurbulence type="fractalNoise" baseFrequency="0.015" numOctaves="3" stitchTiles="stitch"/></filter><rect width="100%" height="100%" filter="url(%23noise)" opacity="0.08"/></svg>');
+            animation: drift 90s linear infinite; pointer-events: none; z-index: 0;
+        }
+        @keyframes drift { 0% { transform: translateX(0); } 100% { transform: translateX(-50vw); } }
+
+        /* 掃描線/紙張紋理 */
+        .card-texture {
+            background-image: 
+                linear-gradient(rgba(15, 10, 10, 0.95), rgba(5, 5, 5, 0.98)),
+                url('data:image/svg+xml;utf8,<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"><filter id="noise"><feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="4" stitchTiles="stitch"/></filter><rect width="100%" height="100%" filter="url(%23noise)" opacity="0.12"/></svg>');
+        }
+
+        /* 標題閃爍 */
+        .flicker { animation: flicker 4s infinite; }
+        @keyframes flicker {
+            0%, 19%, 21%, 63%, 65%, 69%, 100% { opacity: 1; text-shadow: -1px -1px 0 rgba(139,0,0,0.5); }
+            20%, 64%, 70% { opacity: 0.5; text-shadow: none; }
+        }
+
+        /* 漸變出場動畫 */
+        .fade-in { animation: fadeIn 0.6s ease-in forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* 人物卡片翻轉特效 */
+        .perspective { perspective: 1000px; }
+        .card-inner {
+            position: relative; width: 100%; height: 100%;
+            transition: transform 0.8s; transform-style: preserve-3d;
+        }
+        .card-container:hover .card-inner { transform: rotateY(180deg); }
+        .card-front, .card-back {
+            position: absolute; width: 100%; height: 100%;
+            backface-visibility: hidden;
+        }
+        .card-back { transform: rotateY(180deg); }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #030202; }
+        ::-webkit-scrollbar-thumb { background: #3a2e22; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #5a4e3e; }
+    </style>
+</head>
+<body>
+    <div class="fog"></div>
+    <div class="fixed inset-0 shadow-[0_0_150px_rgba(0,0,0,0.95)_inset] pointer-events-none z-10"></div>
+    
+    <div id="root" class="relative z-20 min-h-screen flex flex-col items-center"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // ==========================================
+        // 0. 深淵環境音效引擎 (Web Audio API)
+        // ==========================================
+        const AbyssalAudio = (() => {
+            let ctx = null;
+            let masterGain = null;
+            let isPlaying = false;
+            let pingTimer = null;
+
+            const init = () => {
+                if (ctx) return;
+                ctx = new (window.AudioContext || window.webkitAudioContext)();
+                masterGain = ctx.createGain();
+                masterGain.gain.value = 0.5;
+                masterGain.connect(ctx.destination);
+
+                const drone = ctx.createOscillator();
+                drone.type = 'triangle';
+                drone.frequency.value = 45;
+                const droneGain = ctx.createGain();
+                droneGain.gain.value = 0.8;
+                const lfo = ctx.createOscillator();
+                lfo.type = 'sine';
+                lfo.frequency.value = 0.1;
+                const lfoGain = ctx.createGain();
+                lfoGain.gain.value = 0.4;
+                lfo.connect(lfoGain);
+                lfoGain.connect(droneGain.gain);
+                drone.connect(droneGain);
+                droneGain.connect(masterGain);
+                drone.start();
+                lfo.start();
+
+                const playEeriePing = () => {
+                    if (!isPlaying) return;
+                    const ping = ctx.createOscillator();
+                    ping.type = 'sine';
+                    ping.frequency.value = 300 + Math.random() * 500;
+                    const pingGain = ctx.createGain();
+                    pingGain.gain.setValueAtTime(0, ctx.currentTime);
+                    pingGain.gain.linearRampToValueAtTime(0.08, ctx.currentTime + 2);
+                    pingGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 8);
+                    ping.connect(pingGain);
+                    pingGain.connect(masterGain);
+                    ping.start();
+                    ping.stop(ctx.currentTime + 8);
+                    pingTimer = setTimeout(playEeriePing, 5000 + Math.random() * 10000);
+                };
+                playEeriePing();
+            };
+
+            return {
+                start: () => {
+                    if (!ctx) init();
+                    if (ctx.state === 'suspended') ctx.resume();
+                    isPlaying = true;
+                },
+                stop: () => {
+                    if (ctx && ctx.state === 'running') ctx.suspend();
+                    isPlaying = false;
+                },
+                toggle: () => {
+                    if (!ctx) init();
+                    if (isPlaying) { ctx.suspend(); isPlaying = false; } 
+                    else { ctx.resume(); isPlaying = true; }
+                    return isPlaying;
+                },
+                isPlaying: () => isPlaying
+            };
+        })();
+
+        // ==========================================
+        // 1. 測驗題庫 (40題池)
+        // ==========================================
+        const QUESTIONS_POOL = [
+            { text: "你在無星的黑海中醒來，底艙傳出不屬於人類的濕滑摩擦聲。你會怎麼做？", options: [{ text: "點亮提燈，拿著武器前去指揮眾人查看。", scores: { authority: 2, survival: 1 } }, { text: "將艙門反鎖，躲在黑暗中保全自己。", scores: { survival: 2, madness: 1 } }, { text: "跪在床邊，向主祈求救贖與庇佑。", scores: { faith: 2 } }, { text: "貼在門板上，仔細聆聽並分析聲音的規律。", scores: { insight: 2 } }] },
+            { text: "船上的淡水耗盡，木桶裡只剩下散發著鐵鏽與腥味的暗紅色液體...", options: [{ text: "為了活下去，閉上眼睛喝下去。", scores: { survival: 2, madness: 1 } }, { text: "偷走長官房間裡藏匿的私酒。", scores: { survival: 1, authority: 1 } }, { text: "用破布與火爐嘗試蒸餾海水。", scores: { insight: 2 } }, { text: "這是神聖的血，我滿懷敬意地飲下。", scores: { faith: 2, madness: 1 } }] },
+            { text: "你在甲板上撿到一本沾血的古籍，裡面的文字像活物般在紙上蠕動。", options: [{ text: "立刻將它扔進海裡，這是不祥之物。", scores: { survival: 1, faith: 1 } }, { text: "翻開它。知識比理智更有價值。", scores: { insight: 3, madness: 1 } }, { text: "這就是我要尋找的真理！讚美深淵！", scores: { faith: 2, madness: 2 } }, { text: "把它藏起來，或許能用來威脅船長。", scores: { authority: 1, survival: 2 } }] },
+            { text: "船員們開始互相殘殺，你的室友拿著刀走向你，他的眼睛已經沒有眼白了。", options: [{ text: "先發制人，將匕首刺進他的喉嚨。", scores: { authority: 2, survival: 1 } }, { text: "冷靜地用言語拖延，尋找他的破綻。", scores: { insight: 2 } }, { text: "放棄抵抗...海的聲音在呼喚我們。", scores: { madness: 3 } }, { text: "將他打暈後綁起來，我們不能再失去人手。", scores: { authority: 1, insight: 1 } }] },
+            { text: "為了節省糧食，船長下令將一名虛弱的船員扔下海。你的反應是？", options: [{ text: "主動幫忙推他下去，少張嘴我就能多活一天。", scores: { survival: 3, authority: 1 } }, { text: "反對，並精算剩餘物資證明還能撐幾天。", scores: { insight: 2 } }, { text: "在胸前畫十字，為他即將逝去的靈魂祈禱。", scores: { faith: 2 } }, { text: "狂笑出聲，因為你知道海裡的東西正等著加餐。", scores: { madness: 3 } }] },
+            { text: "深夜，木牆裡傳來低語聲，它正準確地說出你內心最深處的秘密。", options: [{ text: "大聲咆哮掩蓋聲音，展現你的無所畏懼。", scores: { authority: 2, madness: 1 } }, { text: "拿筆將那些低語全部記錄下來。", scores: { insight: 2, madness: 1 } }, { text: "向隨船修女告解，祈求心靈的平靜。", scores: { faith: 3 } }, { text: "用蠟堵住耳朵，強迫自己入睡。", scores: { survival: 2 } }] },
+            { text: "廚師端出了肉湯，但沒有人知道在糧水耗盡的第七天，肉從何而來。", options: [{ text: "管他的，吃飽才有力氣活下去。", scores: { survival: 3 } }, { text: "偷偷解剖肉塊，確認它的生物學來源。", scores: { insight: 2, madness: 1 } }, { text: "拒絕進食，這是惡魔的誘惑。", scores: { faith: 2 } }, { text: "逼迫旁邊最弱小的水手先吃一口試毒。", scores: { authority: 2, survival: 1 } }] },
+            { text: "一場夾帶血水的暴風雨襲來，許多人在甲板上產生了恐怖的幻覺。", options: [{ text: "把自己死死綁在桅杆上，咬牙撐過去。", scores: { survival: 2, authority: 1 } }, { text: "觀察幻覺的規律，這或許是某種星象信號。", scores: { insight: 3 } }, { text: "帶領眾人跪在血雨中大聲唱聖歌。", scores: { faith: 2, authority: 1 } }, { text: "在血雨中狂舞，迎接洗禮。", scores: { madness: 3 } }] },
+            { text: "你在貨艙底層發現了一座由不明骨骸雕刻而成的異教神像。", options: [{ text: "把它藏好，這玩意在黑市絕對能賣個天價。", scores: { survival: 2, authority: 1 } }, { text: "研究神像底部的符文，試圖翻譯它。", scores: { insight: 3 } }, { text: "立刻用斧頭將這個異端之物砸碎！", scores: { faith: 3, authority: 1 } }, { text: "把它抱回房間，每晚和它說話。", scores: { madness: 3 } }] },
+            { text: "最後一天，你照鏡子時，發現自己的眼睛已經完全變成了黑色。", options: [{ text: "砸碎鏡子，拒絕接受現實。", scores: { survival: 1, authority: 1 } }, { text: "冷靜地觸碰鏡面，記錄身體異變的過程。", scores: { insight: 2, madness: 1 } }, { text: "太美了...我終於成為了主的一部分。", scores: { faith: 2, madness: 2 } }, { text: "用刀挖出自己的眼睛，這樣就看不見了。", scores: { madness: 4 } }] },
+            { text: "船帆在無風中突然鼓脹，彷彿有看不見的手在推動。你會？", options: [{ text: "命令水手立刻收帆，避免船隻失控。", scores: { authority: 2, survival: 1 } }, { text: "跪地祈禱，感謝神蹟顯現。", scores: { faith: 2, madness: 1 } }, { text: "仔細觀察帆面的受力方向，試圖找出科學解釋。", scores: { insight: 2 } }, { text: "覺得這是深淵的召喚，張開雙臂迎接。", scores: { madness: 3 } }] },
+            { text: "一名船員聲稱看見已死的同伴在走廊遊蕩，你如何回應？", options: [{ text: "怒斥他妖言惑眾，動搖軍心。", scores: { authority: 2 } }, { text: "陪他一起前往查看，證明那只是幻覺。", scores: { insight: 1, survival: 1 } }, { text: "為他祈禱，並給他聖水。", scores: { faith: 2 } }, { text: "相信他，並開始與看不見的「同伴」對話。", scores: { madness: 3 } }] },
+            { text: "底艙的壓艙石傳來規律的敲擊聲，像是某種密碼。", options: [{ text: "拿起武器，帶人下去一探究竟。", scores: { authority: 2, survival: 1 } }, { text: "記錄敲擊的節奏，試圖破譯。", scores: { insight: 3 } }, { text: "認為是惡魔的語言，開始禱告。", scores: { faith: 2, madness: 1 } }, { text: "跟著節奏一起敲擊，回應深淵。", scores: { madness: 3 } }] },
+            { text: "船醫聲稱他找到了阻止感染擴散的方法：切除被感染的肢體。你會？", options: [{ text: "立刻下令執行，犧牲少數保全多數。", scores: { authority: 2, survival: 1 } }, { text: "自願成為第一個接受手術的人。", scores: { survival: 2, madness: 1 } }, { text: "用草藥和祈禱替代截肢。", scores: { faith: 2 } }, { text: "研究感染組織，試圖理解其生物機制。", scores: { insight: 2, madness: 1 } }] },
+            { text: "你發現自己的日記裡多出了好幾頁，字跡是你的，但內容你毫無記憶。", options: [{ text: "燒掉日記，假裝沒事發生。", scores: { survival: 2 } }, { text: "仔細閱讀，試圖拼湊出遺失的記憶。", scores: { insight: 2, madness: 1 } }, { text: "向神父告解，認為這是邪靈附身。", scores: { faith: 2 } }, { text: "繼續書寫，與「另一個自己」對話。", scores: { madness: 3 } }] },
+            { text: "船上的貓咪開始對著空無一人的角落炸毛低吼。", options: [{ text: "一腳踢開貓，認為牠只是發神經。", scores: { authority: 1, survival: 1 } }, { text: "觀察貓的行為，記錄牠注視的方向。", scores: { insight: 2 } }, { text: "在貓注視的角落灑聖水。", scores: { faith: 2 } }, { text: "對著角落輕聲說：「你看見了什麼？告訴我。」", scores: { madness: 2 } }] },
+            { text: "暴風雨中，船桅被閃電擊中，但你看見閃電的形狀像是一隻手。", options: [{ text: "立刻組織搶修，避免火勢蔓延。", scores: { authority: 2, survival: 1 } }, { text: "認為這是天譴，帶領眾人懺悔。", scores: { faith: 3 } }, { text: "研究被雷擊的木頭紋路，試圖找出科學解釋。", scores: { insight: 2 } }, { text: "伸手觸摸焦黑的痕跡，感受「祂」的溫度。", scores: { madness: 3 } }] },
+            { text: "你在船長室發現了一張從未見過的海圖，上面標記著一座不存在的島嶼。", options: [{ text: "將海圖沒收，嚴禁任何人討論。", scores: { authority: 2 } }, { text: "研究島嶼的座標與古籍記載的關聯。", scores: { insight: 3 } }, { text: "認為那是應許之地，說服船長改變航向。", scores: { faith: 2, madness: 1 } }, { text: "每晚偷偷凝視海圖，感覺島嶼在呼喚你。", scores: { madness: 3 } }] },
+            { text: "一名水手在夢中驚醒，說他看見了海底的宮殿，並能詳細描述其結構。", options: [{ text: "命令他閉嘴，不准再散播恐慌。", scores: { authority: 2 } }, { text: "詳細記錄他的描述，試圖畫出地圖。", scores: { insight: 2, madness: 1 } }, { text: "認為這是神啟，與他一起祈禱。", scores: { faith: 2 } }, { text: "羨慕他，自己也開始渴望夢見那座宮殿。", scores: { madness: 3 } }] },
+            { text: "淡水桶裡的水一夜之間變成了黑色，散發著海潮的氣味。", options: [{ text: "下令封存，用僅剩的酒水度日。", scores: { authority: 2, survival: 1 } }, { text: "嘗試過濾蒸餾，看能否還原成清水。", scores: { insight: 2 } }, { text: "這是聖水，帶頭飲下。", scores: { faith: 2, madness: 2 } }, { text: "用它來洗滌身體，感覺皮膚正在呼吸。", scores: { madness: 3 } }] },
+            { text: "你聽見船底傳來巨大的撞擊聲，船身劇烈搖晃。", options: [{ text: "衝上甲板，指揮船員準備武器。", scores: { authority: 2, survival: 1 } }, { text: "趴下貼緊地板，試圖判斷撞擊來源。", scores: { insight: 2 } }, { text: "跪地禱告，求主平息海怒。", scores: { faith: 2 } }, { text: "跑到船舷邊，興奮地往下看。", scores: { madness: 3 } }] },
+            { text: "船上的羅盤全部失靈，指針瘋狂旋轉。", options: [{ text: "命令領航員改用星象定位。", scores: { authority: 2, survival: 1 } }, { text: "拆開羅盤，檢查是否有人為破壞。", scores: { insight: 2 } }, { text: "認為是魔鬼擾亂方向，進行驅魔儀式。", scores: { faith: 2 } }, { text: "相信指針正指向深淵的入口，要舵手跟隨。", scores: { madness: 3 } }] },
+            { text: "你在床鋪下發現了一撮濕漉漉的頭髮，但你的頭髮是乾的。", options: [{ text: "立刻燒掉，並換房間。", scores: { survival: 2 } }, { text: "仔細檢查，看是否有其他遺落物。", scores: { insight: 2, madness: 1 } }, { text: "拿去給神父，請他祝福淨化。", scores: { faith: 2 } }, { text: "把它編成手環，戴在手上。", scores: { madness: 3 } }] },
+            { text: "船員們開始私下流傳，只要獻祭一人，就能換來順風。", options: [{ text: "公開處決散布謠言者，以正視聽。", scores: { authority: 3 } }, { text: "調查謠言來源，試圖找出幕後黑手。", scores: { insight: 2 } }, { text: "祈禱上帝原諒這些迷途的羔羊。", scores: { faith: 2 } }, { text: "認為這是可行的交易，開始物色祭品。", scores: { madness: 4 } }] },
+            { text: "你照鏡子時，看見自己的倒影對你眨了眨眼，但你的眼睛沒動。", options: [{ text: "砸碎鏡子，當作沒看見。", scores: { survival: 1, authority: 1 } }, { text: "冷靜地測試倒影的反應，記錄下來。", scores: { insight: 2, madness: 2 } }, { text: "在鏡子上畫十字，祈求保護。", scores: { faith: 2 } }, { text: "對倒影微笑，並開始與它對話。", scores: { madness: 4 } }] },
+            { text: "船上的食物開始快速腐敗，連醃肉都長出了藍色的黴菌。", options: [{ text: "實施嚴格配給，先吃腐敗程度較輕的。", scores: { survival: 3, authority: 1 } }, { text: "研究黴菌，看是否有藥用價值。", scores: { insight: 2, madness: 1 } }, { text: "這是天罰，帶頭禁食禱告。", scores: { faith: 2 } }, { text: "吃下藍色黴菌，想看看會發生什麼。", scores: { madness: 4 } }] },
+            { text: "一名船員身上開始長出鱗片，他卻說自己感覺「前所未有的好」。", options: [{ text: "將他隔離，觀察是否具有傳染性。", scores: { authority: 2, survival: 1 } }, { text: "記錄鱗片的生長速度與紋理。", scores: { insight: 2, madness: 1 } }, { text: "為他驅魔，試圖逆轉異變。", scores: { faith: 2 } }, { text: "羨慕他的轉變，詢問如何才能長出鱗片。", scores: { madness: 4 } }] },
+            { text: "你在夢中被一個巨大的存在凝視，醒來後發現枕頭濕了一片（不是淚水）。", options: [{ text: "假裝沒事，繼續日常作息。", scores: { survival: 2 } }, { text: "寫下夢境細節，分析可能的含義。", scores: { insight: 2, madness: 1 } }, { text: "去祈禱室徹夜禱告。", scores: { faith: 2 } }, { text: "期待再次入睡，渴望回到那個夢境。", scores: { madness: 3 } }] },
+            { text: "船上的蠟燭火焰全部變成綠色，並朝著同一個方向傾斜。", options: [{ text: "下令滅掉所有蠟燭，改用油燈。", scores: { authority: 2 } }, { text: "觀察火焰指向，推測是否為氣流造成。", scores: { insight: 2 } }, { text: "這是聖靈的顯現，跪下祈禱。", scores: { faith: 2, madness: 1 } }, { text: "用手指觸摸火焰，它一點也不燙……", scores: { madness: 3 } }] },
+            { text: "你發現船上的老鼠全部消失了，連屍體都沒有。", options: [{ text: "太好了，食物不會再被偷吃了。", scores: { survival: 2 } }, { text: "調查老鼠消失的原因，檢查是否有隱藏的天敵。", scores: { insight: 2 } }, { text: "這是神蹟，感謝主的恩賜。", scores: { faith: 2 } }, { text: "老鼠們知道要發生什麼了……牠們先逃了。", scores: { madness: 2 } }] },
+            { text: "船長開始在深夜對海面低語，你偷聽到他反覆說著一個名字。", options: [{ text: "立刻召集其他幹部，商議罷免船長。", scores: { authority: 3 } }, { text: "記錄下那個名字，暗中調查其意義。", scores: { insight: 2, madness: 1 } }, { text: "為船長祈禱，希望他能戰勝心魔。", scores: { faith: 2 } }, { text: "也開始在夜裡呼喚那個名字。", scores: { madness: 3 } }] },
+            { text: "你在船艙深處發現了一間不存在的房間，裡面的擺設像是一座禮拜堂。", options: [{ text: "封鎖入口，不准任何人靠近。", scores: { authority: 2 } }, { text: "仔細調查房間內的物品與符號。", scores: { insight: 2, madness: 1 } }, { text: "認為這是上帝給你的私人啟示，在此祈禱。", scores: { faith: 2, madness: 1 } }, { text: "每晚都來這裡，對神像說話。", scores: { madness: 4 } }] },
+            { text: "船上的時間似乎錯亂了，沙漏的沙子有時向上流動。", options: [{ text: "沒收所有沙漏，改用機械懷錶。", scores: { authority: 2 } }, { text: "記錄沙子逆流的頻率與規律。", scores: { insight: 2, madness: 1 } }, { text: "這是神蹟，時間在為我們倒流。", scores: { faith: 2 } }, { text: "把沙子倒在身上，感受時間逆流的觸感。", scores: { madness: 3 } }] },
+            { text: "一名船員聲稱他已經三天沒闔眼，因為只要閉眼就會被拖進海底。", options: [{ text: "命令他繼續工作，疲勞不是藉口。", scores: { authority: 2, survival: 1 } }, { text: "記錄他的幻覺內容，與其他案例比對。", scores: { insight: 2, madness: 1 } }, { text: "為他祈禱，並給他安神草藥。", scores: { faith: 2 } }, { text: "告訴他：「那就別閉眼，我們一起醒著。」", scores: { madness: 2 } }] },
+            { text: "你發現自己的影子有時會延遲幾秒才跟上你的動作。", options: [{ text: "試圖用燈光消除影子。", scores: { survival: 2 } }, { text: "觀察影子的行為，看它是否有自主意識。", scores: { insight: 2, madness: 2 } }, { text: "認為影子被邪靈附身，進行自我驅魔。", scores: { faith: 2 } }, { text: "與影子玩遊戲，享受這種「不孤單」的感覺。", scores: { madness: 4 } }] },
+            { text: "船上的聖經文字開始扭曲，變成了你從未見過的語言。", options: [{ text: "燒掉聖經，換一本新的。", scores: { survival: 1, faith: 1 } }, { text: "試圖翻譯這些新文字。", scores: { insight: 3, madness: 1 } }, { text: "這是上帝的新啟示，更加虔誠地誦讀。", scores: { faith: 2, madness: 1 } }, { text: "發現你能讀懂，而且內容美妙極了。", scores: { madness: 4 } }] },
+            { text: "船員們開始用指甲在木板上刻下同樣的螺旋符號。", options: [{ text: "下令禁止，違者鞭刑。", scores: { authority: 3 } }, { text: "研究符號的意義，對比古籍。", scores: { insight: 2, madness: 1 } }, { text: "認為這是保護符，鼓勵大家刻在門框上。", scores: { faith: 2 } }, { text: "也開始刻，而且刻得比誰都深。", scores: { madness: 3 } }] },
+            { text: "你看見海面上有一個與你長得一模一樣的人，正對著你微笑揮手。", options: [{ text: "立刻轉頭不看，那是幻覺。", scores: { survival: 2 } }, { text: "拿望遠鏡仔細觀察，確認細節。", scores: { insight: 2, madness: 2 } }, { text: "跪下祈禱，感謝主讓你見證奇蹟。", scores: { faith: 2 } }, { text: "跳下海去，想與「自己」團聚。", scores: { madness: 5 } }] },
+            { text: "船底開始滲水，但滲進來的水是溫熱的，帶有淡淡的腥甜味。", options: [{ text: "立刻組織修補，並加強抽水。", scores: { survival: 3, authority: 1 } }, { text: "收集水樣，化驗成分。", scores: { insight: 2, madness: 1 } }, { text: "這是聖水，用來洗滌罪孽。", scores: { faith: 2, madness: 1 } }, { text: "喝了一口，感覺體內有什麼東西在甦醒。", scores: { madness: 4 } }] },
+            { text: "你終於明白，這艘船從未離開過港口——是整個世界變成了海。", options: [{ text: "堅守崗位，等待救援。", scores: { survival: 2, authority: 1 } }, { text: "記錄下這個假設，試圖找出破綻。", scores: { insight: 2, madness: 2 } }, { text: "這是神的試煉，欣然接受。", scores: { faith: 2, madness: 1 } }, { text: "笑了出來，因為你終於自由了。", scores: { madness: 5 } }] }
+        ];
+
+        // ==========================================
+        // 2. 17 個遊戲角色結果
+        // ==========================================
+        const CHARACTERS = [
+            { id: "c1", name: "阿隆索 Alonso", title: "獨裁船長", subtitle: "THE DICTATOR", quote: "「我的命令高於上帝，抗命者餵魚。」", desc: "你擁有極高的掌控慾與權威。在絕境中，你傾向用鐵腕統治所有人，把他人視為讓你活下去的籌碼。", stats: { san: "40/100", survival: "60%", attr: "高權威/求生" }, color: "text-amber-500", weights: { authority: 3, faith: 0, insight: 1, survival: 2, madness: 1 }, persona: "ARROGANT" },
+            { id: "c2", name: "瓦斯科 Vasco", title: "嗜血大副", subtitle: "THE MUTINEER", quote: "「金幣比信仰實在。只要撐過去，我們都能發財。」", desc: "為達目的不擇手段。你信奉暴力與利益，當船隻陷入混亂，你絕對是第一個拔刀引發叛亂的人。", stats: { san: "45/100", survival: "65%", attr: "高武力/貪婪" }, color: "text-red-500", weights: { authority: 2, faith: 0, insight: 0, survival: 3, madness: 1 }, persona: "VULGAR" },
+            { id: "c3", name: "迪亞哥 Diego", title: "絕望航海長", subtitle: "THE NAVIGATOR", quote: "「北極星消失了...這整片海域都是活的！」", desc: "你擁有極高的洞察力，因此也是最先看清深淵真相的人。你極度理性，卻也因為這份理性而加速崩潰。", stats: { san: "10/100", survival: "20%", attr: "極高洞察 Insight" }, color: "text-blue-400", weights: { authority: 1, faith: 0, insight: 3, survival: 1, madness: 2 }, persona: "STOIC" },
+            { id: "c4", name: "伊莎貝拉 Isabella", title: "狂熱修女", subtitle: "THE CULTIST", quote: "「主會庇佑我們...海面下的那位主。」", desc: "你的信仰已經扭曲。表面上虔誠祈禱，實際上早已被深淵的低語蠱惑，正策劃著一場血腥的獻祭。", stats: { san: "0/100", survival: "??%", attr: "極高信仰/狂熱" }, color: "text-purple-500", weights: { authority: 1, faith: 3, insight: 1, survival: 0, madness: 2 }, persona: "PIOUS" },
+            { id: "c5", name: "巴托梅烏 Bartolomeu", title: "異端船醫", subtitle: "THE DOCTOR", quote: "「人體不過是肉與骨的機械，而我喜歡拆解它。」", desc: "冷酷且病態的學者。你對死去的同伴沒有憐憫，反而將他們視為絕佳的解剖素材，渴望了解變異的根源。", stats: { san: "35/100", survival: "50%", attr: "高洞察/無情" }, color: "text-teal-400", weights: { authority: 0, faith: 0, insight: 3, survival: 1, madness: 1 }, persona: "CURIOUS" },
+            { id: "c6", name: "胡安 Juan", title: "貪婪廚師", subtitle: "THE CANNIBAL", quote: "「肉就是肉，不要問我湯裡煮了什麼。」", desc: "生存大於一切，底線完全喪失。在糧水耗盡時，你毫不猶豫地跨越了身為人類的最後一道禁忌。", stats: { san: "25/100", survival: "70%", attr: "極高求生 Survival" }, color: "text-orange-500", weights: { authority: 0, faith: 0, insight: 0, survival: 3, madness: 2 }, persona: "VULGAR" },
+            { id: "c7", name: "恩里克 Enrique", title: "崩潰瞭望手", subtitle: "THE LOOKOUT", quote: "「不要看海裡！拜託你們不要看！」", desc: "你的精神非常脆弱。作為站在最高處的人，你第一個直視了不可名狀的恐怖，理智值瞬間歸零。", stats: { san: "0/100", survival: "5%", attr: "極高恐懼/瘋狂" }, color: "text-green-400", weights: { authority: 0, faith: 1, insight: 2, survival: 0, madness: 3 }, persona: "TIMID" },
+            { id: "c8", name: "卡洛斯 Carlos", title: "暴躁炮手", subtitle: "THE GUNNER", quote: "「把那怪物連同這艘破船一起炸上天！」", desc: "衝動且充滿破壞慾。面對未知，你的第一反應是用火藥解決。你很可能在殺死怪物前，先炸死了隊友。", stats: { san: "30/100", survival: "40%", attr: "高武力/衝動" }, color: "text-red-600", weights: { authority: 1, faith: 0, insight: 0, survival: 2, madness: 2 }, persona: "VULGAR" },
+            { id: "c9", name: "安東尼奧 Antonio", title: "沉默木匠", subtitle: "THE CARPENTER", quote: "「只要船底沒漏水，其他事與我無關。」", desc: "極度務實的勞動者。你不關心信仰也不在乎陰謀，只專注於手邊的工作，是船上少數能維持理智的人。", stats: { san: "60/100", survival: "55%", attr: "務實/冷漠" }, color: "text-stone-400", weights: { authority: 0, faith: 1, insight: 1, survival: 3, madness: 0 }, persona: "STOIC" },
+            { id: "c10", name: "瑪麗亞 Maria", title: "秘藏乘客", subtitle: "THE PASSENGER", quote: "「每個人都有秘密，而我知道你們所有的秘密。」", desc: "充滿魅力且善於隱藏。你游走在各大勢力之間，用美貌與情報換取生存機會，沒人知道你的真實目的。", stats: { san: "50/100", survival: "60%", attr: "高魅力 Charisma" }, color: "text-pink-400", weights: { authority: 2, faith: 1, insight: 2, survival: 2, madness: 0 }, persona: "PARANOID" },
+            { id: "c11", name: "佩德羅 Pedro", title: "鐵血水手長", subtitle: "THE BOATSWAIN", quote: "「規矩就是規矩，違抗命令者鞭笞五十。」", desc: "冷酷的執行者，只服從於權威。你將秩序視為唯一的救命稻草，即使這份秩序已經變得病態。", stats: { san: "55/100", survival: "45%", attr: "高武力/紀律" }, color: "text-slate-300", weights: { authority: 2, faith: 0, insight: 0, survival: 2, madness: 1 }, persona: "STOIC" },
+            { id: "c12", name: "費爾南多 Fernando", title: "禁忌學者", subtitle: "THE SCHOLAR", quote: "「那些古籍沒有瘋，瘋的是無法理解它的我們。」", desc: "對未知知識有著致命的好奇心。你主動擁抱深淵，只為了看清那超越人類理解的宏大宇宙真理。", stats: { san: "15/100", survival: "10%", attr: "極高洞察/求知" }, color: "text-indigo-400", weights: { authority: 0, faith: 2, insight: 3, survival: 0, madness: 2 }, persona: "CURIOUS" },
+            { id: "c13", name: "路易斯 Luis", title: "陰暗偷渡客", subtitle: "THE STOWAWAY", quote: "「只要不被看到，就不會死。」", desc: "你習慣在黑暗中苟且偷生。膽小且謹慎，當所有人在甲板上互相殘殺時，你完美地躲在木桶裡發抖。", stats: { san: "45/100", survival: "30%", attr: "高隱蔽/膽小" }, color: "text-zinc-500", weights: { authority: 0, faith: 0, insight: 1, survival: 3, madness: 1 }, persona: "TIMID" },
+            { id: "c14", name: "加布里埃爾 Gabriel", title: "深淵囚犯", subtitle: "THE PRISONER", quote: "「枷鎖鎖不住即將到來的浪潮。」", desc: "你一上船就被當作異端鎖在底艙。你擁有極高的意志力，因為你早已預見了這艘船的毀滅，並為此歡呼。", stats: { san: "5/100", survival: "15%", attr: "極高意志/異端" }, color: "text-fuchsia-500", weights: { authority: 0, faith: 3, insight: 2, survival: 0, madness: 3 }, persona: "FATALIST" },
+            { id: "c15", name: "馬丁 Martin", title: "迷途水手", subtitle: "THE DECKHAND", quote: "「大家做什麼，我就跟著做...」", desc: "沒有主見的凡人。你隨波逐流，是暴亂中最容易被煽動的棋子，也是深淵怪物最喜歡的祭品。", stats: { san: "35/100", survival: "25%", attr: "平庸/隨波逐流" }, color: "text-yellow-200", weights: { authority: 0, faith: 1, insight: 0, survival: 2, madness: 1 }, persona: "TIMID" },
+            { id: "c16", name: "索菲亞 Sofia", title: "末日占卜師", subtitle: "THE ORACLE", quote: "「塔羅牌上只有死神，每一張都是。」", desc: "你的靈感極高，能感知到海面下的惡意。但預知災難並不能阻止災難，反而讓你在清醒中絕望。", stats: { san: "20/100", survival: "15%", attr: "高靈感/預知" }, color: "text-violet-400", weights: { authority: 1, faith: 2, insight: 3, survival: 0, madness: 2 }, persona: "PARANOID" },
+            { id: "c17", name: "深淵宿主", title: "完美容器", subtitle: "THE VESSEL", quote: "「我們...是一體的了。」", desc: "你已經徹底失去了人類的特徵。你的理智歸零，感染度達到100%，成為了那古老存在降臨這艘船的完美肉塊。", stats: { san: "N/A", survival: "0% (人類意義上)", attr: "100% 感染" }, color: "text-red-700", weights: { authority: 0, faith: 1, insight: 1, survival: 0, madness: 8 }, persona: "FATALIST" }
+        ];
+
+        // ==========================================
+        // 3. React 遊戲介紹組件
+        // ==========================================
+        const GameIntroduction = ({ onStartQuiz }) => {
+            return (
+                <div className="w-full max-w-5xl px-6 flex flex-col items-center pb-24 fade-in">
+                    <div className="mb-24 animate-bounce text-[#5a4e3e] flex flex-col items-center">
+                        <p className="text-xs tracking-widest mb-2 font-mono">向下捲動查看航行須知</p>
+                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg>
+                    </div>
+
+                    <div className="w-full max-w-3xl relative p-8 mb-32 border-y border-[#3a2e22] bg-black/30 backdrop-blur-sm shadow-xl">
+                        <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-[#030202] px-4 text-[#7a6b55] text-xs tracking-widest font-bold">航海日誌 摘錄</div>
+                        <div className="space-y-6 text-sm md:text-lg text-[#9c8b75] leading-loose text-justify">
+                            <p>「1524年，深秋。這是一趟被上帝遺棄的航程。</p>
+                            <p>我們載滿了不該觸碰的異端古籍，駛入了一片沒有星光、沒有海風的死寂黑海。三週過去了，羅盤碎裂，淡水早已耗盡。底艙開始傳出不屬於人類的濕滑摩擦聲與低語。</p>
+                            <p className="text-[#b5a38c]">比起那黑暗中蠕動的未知，更令人毛骨悚然的，是船員們看著彼此的眼神，正變得越來越飢餓……」</p>
+                        </div>
+                        <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2 bg-[#030202] px-4 text-[#7a6b55] text-xs tracking-widest font-bold">大副 絕筆</div>
+                    </div>
+
+                    <div className="w-full mb-32">
+                        <h2 className="text-2xl tracking-[0.3em] text-[#a49682] mb-12 font-bold text-center">◆ 核心機制 (CORE SYSTEM) ◆</h2>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                            <div className="bg-black/40 border border-[#3a2e22] p-8 relative overflow-hidden group hover:border-[#8c7b65] transition-colors">
+                                <div className="absolute top-0 right-0 p-4 opacity-10 text-6xl font-black">1</div>
+                                <h3 className="text-xl text-[#d4c5b0] mb-4 flex items-center gap-3">
+                                    <svg className="w-6 h-6 text-red-900" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path d="M12 4.5a2.5 2.5 0 0 0-4.96-.46 2.5 2.5 0 0 0-1.98 3.5 2.5 2.5 0 0 0-1.32 3.46 2.5 2.5 0 0 0 1.43 3.5 2.5 2.5 0 0 0 2.83 2.5 2.5 2.5 0 0 0 3.5 1.93 2.5 2.5 0 0 0 3.5-1.93 2.5 2.5 0 0 0 2.83-2.5 2.5 2.5 0 0 0 1.43-3.5 2.5 2.5 0 0 0-1.32-3.46 2.5 2.5 0 0 0-1.98-3.5A2.5 2.5 0 0 0 12 4.5z"/></svg>
+                                    硬核 TRPG 屬性檢定
+                                </h3>
+                                <p className="text-[#8c7b65] text-sm leading-relaxed mb-4">遭遇暴動或靈異事件時，系統將進行基於玩家面板的隨機判定。你必須妥善利用四大屬性：</p>
+                                <ul className="text-xs text-[#a49682] space-y-2 pl-4 border-l border-red-900/50">
+                                    <li><strong className="text-[#d4c5b0]">洞察 (Insight)</strong>：察覺謊言、搜查隱藏古籍。</li>
+                                    <li><strong className="text-[#d4c5b0]">意志 (Willpower)</strong>：抵抗恐懼、對抗深淵低語附身。</li>
+                                    <li><strong className="text-[#d4c5b0]">魅力 (Charisma)</strong>：安撫船員暴動、降低群體壓力。</li>
+                                    <li><strong className="text-[#d4c5b0]">體魄 (Vigor)</strong>：武力鎮壓叛變、抵抗未知感染。</li>
+                                </ul>
+                            </div>
+                            <div className="bg-black/40 border border-[#3a2e22] p-8 relative overflow-hidden group hover:border-[#8c7b65] transition-colors">
+                                <div className="absolute top-0 right-0 p-4 opacity-10 text-6xl font-black">2</div>
+                                <h3 className="text-xl text-[#d4c5b0] mb-4 flex items-center gap-3">
+                                    <svg className="w-6 h-6 text-red-900" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path d="M4 10a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V10z"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+                                    拖曳式證物推理解謎
+                                </h3>
+                                <p className="text-[#8c7b65] text-sm leading-relaxed">遊戲內建「物品欄與日誌」系統。你可以在船艙各處發現死者的「絕筆信」或「異端古物」。<br/><br/>玩家必須透過<span className="text-red-400 font-bold">滑鼠拖曳 (Drag & Drop)</span>，將特定的證物出示給嫌疑人 NPC 進行對質，藉此觸發隱藏對話並揭露船上的走私與異教陰謀。</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="w-full mb-24">
+                        <h2 className="text-2xl tracking-[0.3em] text-[#a49682] mb-4 font-bold text-center">◆ 航海名冊 (THE CREW) ◆</h2>
+                        <p className="text-center text-xs text-red-900/80 mb-10 tracking-widest">將游標移至檔案上以揭露隱藏秘密</p>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 perspective">
+                            <div className="card-container h-80 w-full cursor-pointer group">
+                                <div className="card-inner">
+                                    <div className="card-front bg-[#0a0806] border border-[#3a2e22] p-6 flex flex-col justify-between">
+                                        <div>
+                                            <div className="text-xs text-[#5a4e3e] tracking-widest mb-1">大副 First Mate</div>
+                                            <h3 className="text-2xl font-bold text-[#d4c5b0] mb-4 border-b border-[#2a1a1a] pb-2">瓦斯科 Vasco</h3>
+                                            <p className="text-sm text-[#8c7b65] italic">「金幣比信仰更實在。只要撐過這片海域，我們都能發財。」</p>
+                                        </div>
+                                    </div>
+                                    <div className="card-back bg-[#150505] border border-red-900 p-6 flex flex-col justify-center items-center text-center">
+                                        <svg className="w-8 h-8 text-red-800 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 16v-4"/><path d="M12 8h.01"/><circle cx="12" cy="12" r="10"/></svg>
+                                        <h4 className="text-red-500 font-bold mb-2">秘密：走私異端者</h4>
+                                        <p className="text-xs text-red-900/80 leading-relaxed">底艙那些引來詛咒的異教古籍，全是他為了黑市暴利偷運上船的。他的身體已經開始長出鱗片。</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="card-container h-80 w-full cursor-pointer group">
+                                <div className="card-inner">
+                                    <div className="card-front bg-[#0a0806] border border-[#3a2e22] p-6 flex flex-col justify-between">
+                                        <div>
+                                            <div className="text-xs text-[#5a4e3e] tracking-widest mb-1">隨船修女 Nun</div>
+                                            <h3 className="text-2xl font-bold text-[#d4c5b0] mb-4 border-b border-[#2a1a1a] pb-2">伊莎貝拉 Isabella</h3>
+                                            <p className="text-sm text-[#8c7b65] italic">「主會庇佑我們。即使在沒有星光的黑夜，祈禱也不能停歇。」</p>
+                                        </div>
+                                    </div>
+                                    <div className="card-back bg-[#150505] border border-red-900 p-6 flex flex-col justify-center items-center text-center">
+                                        <svg className="w-8 h-8 text-red-800 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 2v20M8 6h8"/></svg>
+                                        <h4 className="text-red-500 font-bold mb-2">秘密：深淵祭司</h4>
+                                        <p className="text-xs text-red-900/80 leading-relaxed">她口中祈禱的「主」早已不是上帝。她每天深夜都在廚房收集鮮血，試圖喚醒海下的神明。</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="card-container h-80 w-full cursor-pointer group">
+                                <div className="card-inner">
+                                    <div className="card-front bg-[#0a0806] border border-[#3a2e22] p-6 flex flex-col justify-between">
+                                        <div>
+                                            <div className="text-xs text-[#5a4e3e] tracking-widest mb-1">航海長 Navigator</div>
+                                            <h3 className="text-2xl font-bold text-[#d4c5b0] mb-4 border-b border-[#2a1a1a] pb-2">迪亞哥 Diego</h3>
+                                            <p className="text-sm text-[#8c7b65] italic">「北極星消失了...星圖是錯的！這整片海域都是活的！」</p>
+                                        </div>
+                                    </div>
+                                    <div className="card-back bg-[#150505] border border-red-900 p-6 flex flex-col justify-center items-center text-center">
+                                        <svg className="w-8 h-8 text-red-800 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+                                        <h4 className="text-red-500 font-bold mb-2">秘密：瀕臨崩潰</h4>
+                                        <p className="text-xs text-red-900/80 leading-relaxed">他是唯一看清海面下巨大陰影的人。他的理智值已歸零，正計畫在今晚破壞船上所有的淡水桶。</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="w-full border-t border-[#2a1e12] pt-12 flex flex-col items-center">
+                        <h2 className="text-xl text-[#d4c5b0] mb-6 tracking-widest">準備好面對你的命運了嗎？</h2>
+                        <div className="flex flex-col sm:flex-row gap-6">
+                            <button 
+                                onClick={onStartQuiz}
+                                className="px-8 py-3 border border-[#a43030] text-[#ffcccc] bg-red-950/20 hover:bg-red-900/40 transition-colors shadow-[0_0_15px_rgba(139,0,0,0.3)] text-sm tracking-widest"
+                            >
+                                進行登船心理評估
+                            </button>
+                            <a 
+                                href="game.html" 
+                                className="px-8 py-3 border border-[#3a2e22] text-[#d4c5b0] hover:bg-[#1a1510] transition-colors text-sm tracking-widest flex items-center justify-center gap-2"
+                            >
+                                直接進入遊戲 (Skip)
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        function App() {
+            const [step, setStep] = useState('intro'); // intro, quiz, analyzing, result
+            const [selectedQuestions, setSelectedQuestions] = useState([]);
+            const [currentQ, setCurrentQ] = useState(0);
+            const [userScores, setUserScores] = useState({ authority: 0, faith: 0, insight: 0, survival: 0, madness: 0 });
+            const [finalResult, setFinalResult] = useState(null);
+            
+            const cardRef = useRef(null);
+            const [isExporting, setIsExporting] = useState(false);
+            const [isAudioOn, setIsAudioOn] = useState(false);
+
+            const handleAudioToggle = () => {
+                const playing = AbyssalAudio.toggle();
+                setIsAudioOn(playing);
+            };
+
+            const handleStartQuiz = () => {
+                window.scrollTo(0, 0);
+                AbyssalAudio.start();
+                setIsAudioOn(true);
+                
+                // 隨機抽取 10 題
+                const shuffled = [...QUESTIONS_POOL].sort(() => Math.random() - 0.5);
+                setSelectedQuestions(shuffled.slice(0, 10));
+                
+                setCurrentQ(0);
+                setUserScores({ authority: 0, faith: 0, insight: 0, survival: 0, madness: 0 });
+                setStep('quiz');
+            };
+
+            const SkipToGameLink = () => (
+                <div className="mt-8 text-center">
+                    <a href="game.html" className="text-[#5a4e3e] text-sm hover:text-red-800 transition-colors border-b border-transparent hover:border-red-800 pb-1">
+                        或者，直接登船進入遊戲 [Skip to Game]
+                    </a>
+                </div>
+            );
+
+            const handleAnswer = (scoresObj) => {
+                const newScores = { ...userScores };
+                for (const [key, val] of Object.entries(scoresObj)) {
+                    newScores[key] += val;
+                }
+                setUserScores(newScores);
+
+                if (currentQ < selectedQuestions.length - 1) {
+                    setCurrentQ(currentQ + 1);
+                } else {
+                    calculateResult(newScores);
+                }
+            };
+
+            const calculateResult = (finalScores) => {
+                setStep('analyzing');
+                
+                // 1. 基於隨機出的這 10 題，計算每個維度的最大可能分數
+                const maxTotal = { authority: 0, faith: 0, insight: 0, survival: 0, madness: 0 };
+                selectedQuestions.forEach(q => {
+                    let maxForQ = { authority: 0, faith: 0, insight: 0, survival: 0, madness: 0 };
+                    q.options.forEach(opt => {
+                        for (const [key, val] of Object.entries(opt.scores)) {
+                            if (val > maxForQ[key]) maxForQ[key] = val;
+                        }
+                    });
+                    for (const key of Object.keys(maxTotal)) {
+                        maxTotal[key] += maxForQ[key] || 0;
+                    }
+                });
+
+                // 2. 標準化玩家分數（避免除以零）
+                const normalized = {};
+                for (const key of Object.keys(finalScores)) {
+                    normalized[key] = maxTotal[key] > 0 ? finalScores[key] / maxTotal[key] : 0;
+                }
+
+                // 3. 計算每個角色的匹配分數（標準化分數 * 權重）
+                let bestMatch = CHARACTERS[0];
+                let highestScore = -1;
+
+                CHARACTERS.forEach(char => {
+                    let score = 0;
+                    for (const [key, weight] of Object.entries(char.weights)) {
+                        score += (normalized[key] || 0) * weight;
+                    }
+                    if (score > highestScore) {
+                        highestScore = score;
+                        bestMatch = char;
+                    }
+                });
+
+                setTimeout(() => {
+                    setFinalResult(bestMatch);
+                    setStep('result');
+                }, 2000);
+            };
+
+            const exportImage = async () => {
+                if (!cardRef.current) return;
+                setIsExporting(true);
+                try {
+                    const canvas = await html2canvas(cardRef.current, {
+                        backgroundColor: '#0a0806',
+                        scale: 2,
+                        useCORS: true,
+                    });
+                    const link = document.createElement('a');
+                    link.download = `聖瑪利亞號_${finalResult.title}.png`;
+                    link.href = canvas.toDataURL('image/png');
+                    link.click();
+                } catch (err) {
+                    console.error("匯出失敗", err);
+                    alert("匯出圖片時發生錯誤，請稍後再試。");
+                } finally {
+                    setIsExporting(false);
+                }
+            };
+
+            return (
+                <div className="w-full relative">
+                    <button 
+                        onClick={handleAudioToggle} 
+                        className="fixed top-4 right-4 z-50 p-2 text-[#8c7b65] hover:text-[#d4c5b0] bg-black/50 border border-[#3a2e22] rounded-full transition-colors flex items-center justify-center backdrop-blur-sm"
+                        title={isAudioOn ? "靜音" : "開啟深淵音效"}
+                    >
+                        {isAudioOn ? (
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5 10v4a2 2 0 002 2h2l4 4V4L9 8H7a2 2 0 00-2 2z"></path></svg>
+                        ) : (
+                            <svg className="w-5 h-5 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h2.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"></path></svg>
+                        )}
+                    </button>
+
+                    {step === 'intro' && (
+                        <div className="w-full flex flex-col items-center">
+                            <div className="min-h-screen flex flex-col items-center justify-center text-center px-4 pt-10 fade-in">
+                                <h3 className="text-red-900 tracking-[0.5em] text-sm font-bold uppercase mb-4">心理恐懼生存 RPG</h3>
+                                <h1 className="text-6xl md:text-8xl font-black mb-8 tracking-widest text-transparent bg-clip-text bg-gradient-to-b from-[#e8dcc5] to-[#5a4e3e] flicker">
+                                    聖瑪利亞號
+                                </h1>
+                                <p className="text-[#8c7b65] leading-loose mb-12 text-sm md:text-base text-justify md:text-center px-4 max-w-2xl">
+                                    黑海沒有秘密。在踏上這艘被詛咒的船隻之前，深淵早已看透了你的靈魂。<br/>
+                                    完成航海心理評估，領取你的專屬「船員身分卡」。
+                                </p>
+                                
+                                <div className="flex flex-col items-center gap-6">
+                                    <button 
+                                        onClick={handleStartQuiz}
+                                        className="relative px-12 py-4 border border-[#5a0000] text-[#ffcccc] font-bold tracking-[0.3em] hover:bg-red-950/40 transition-colors shadow-[0_0_20px_rgba(139,0,0,0.3)] hover:shadow-[0_0_30px_rgba(139,0,0,0.6)]"
+                                    >
+                                        開始潛入深淵 (心理評估)
+                                    </button>
+                                    <a href="game.html" className="text-[#5a4e3e] text-sm hover:text-[#8c7b65] transition-colors underline underline-offset-4">
+                                        或者，直接進入遊戲 [Skip]
+                                    </a>
+                                </div>
+                            </div>
+                            <GameIntroduction onStartQuiz={handleStartQuiz} />
+                        </div>
+                    )}
+
+                    {step === 'quiz' && selectedQuestions.length > 0 && (
+                        <div className="max-w-3xl mx-auto w-full fade-in min-h-screen flex flex-col justify-center px-4" key={currentQ}>
+                            <div className="w-full bg-[#1a1010] h-1 mb-8">
+                                <div className="bg-red-800 h-1 transition-all duration-300" style={{width: `${(currentQ / selectedQuestions.length) * 100}%`}}></div>
+                            </div>
+                            <div className="text-center mb-8">
+                                <span className="text-[#5a4e3e] text-xs tracking-widest font-mono">
+                                    檔案紀錄 {currentQ + 1} / {selectedQuestions.length}
+                                </span>
+                            </div>
+                            <h2 className="text-xl md:text-2xl text-[#d4c5b0] mb-10 leading-loose text-center px-4">
+                                「{selectedQuestions[currentQ].text}」
+                            </h2>
+                            <div className="flex flex-col gap-4 px-4 md:px-12">
+                                {selectedQuestions[currentQ].options.map((opt, idx) => (
+                                    <button 
+                                        key={idx}
+                                        onClick={() => handleAnswer(opt.scores)}
+                                        className="text-left w-full p-4 border border-[#2a1a1a] bg-black/40 text-[#8c7b65] hover:border-red-900/80 hover:text-[#d4c5b0] hover:bg-[#1a0505] transition-all text-sm md:text-base tracking-wide"
+                                    >
+                                        {opt.text}
+                                    </button>
+                                ))}
+                            </div>
+                            <SkipToGameLink />
+                        </div>
+                    )}
+
+                    {step === 'analyzing' && (
+                        <div className="text-center fade-in min-h-screen flex flex-col justify-center">
+                            <div className="animate-pulse mb-6">
+                                <svg className="w-12 h-12 mx-auto text-red-900" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 2v20M8 6h8" /></svg>
+                            </div>
+                            <h2 className="text-xl tracking-[0.4em] text-[#a49682]">正在配對船員名冊...</h2>
+                            <p className="text-xs text-[#5a4e3e] mt-4 font-mono">LOADING_ABYSSAL_DATA...</p>
+                        </div>
+                    )}
+
+                    {step === 'result' && finalResult && (
+                        <div className="flex flex-col items-center justify-center w-full max-w-md mx-auto fade-in min-h-screen py-10 px-4">
+                            <div ref={cardRef} className="w-full relative card-texture p-6 md:p-8 border-4 border-double border-[#3a2e22] shadow-[0_10px_40px_rgba(0,0,0,0.8)] flex flex-col bg-[#0a0806]">
+                                <div className="absolute top-4 right-4 border border-red-900/40 text-red-900/40 transform rotate-12 px-2 py-1 text-[10px] font-black tracking-widest uppercase">CONFIDENTIAL</div>
+                                <div className="text-center border-b border-[#2a1e12] pb-4 mb-6 mt-2">
+                                    <p className="text-[10px] text-[#5a4e3e] tracking-[0.3em] font-mono mb-1">SANTA MARIA - CREW ID</p>
+                                    <h2 className="text-[#a49682] text-sm tracking-widest font-bold">聖瑪利亞號 登船鑑定</h2>
+                                </div>
+                                <div className="text-center mb-6">
+                                    <p className={`text-[10px] tracking-[0.4em] mb-2 ${finalResult.color} opacity-70`}>{finalResult.subtitle}</p>
+                                    <h1 className={`text-4xl font-black tracking-widest ${finalResult.color} flicker mb-2`}>{finalResult.title}</h1>
+                                    <p className="text-[#a49682] text-sm tracking-widest">[{finalResult.name}]</p>
+                                </div>
+                                <div className={`p-4 border-l-2 border-[#5a4e3e] bg-black/40 mb-6`}>
+                                    <p className="text-[#d4c5b0] text-sm italic leading-relaxed text-justify">{finalResult.quote}</p>
+                                </div>
+                                <p className="text-xs text-[#7a6b55] leading-relaxed mb-6 text-justify">{finalResult.desc}</p>
+                                
+                                <div className="mb-4 text-center">
+                                    <p className="text-[10px] text-[#8b795e] tracking-widest uppercase border-b border-[#3a2e22] pb-1 inline-block">
+                                        ⚓ 主遊戲人格原型：{finalResult.persona}
+                                    </p>
+                                    <p className="text-[9px] text-[#5a4e3e] mt-2 italic">
+                                        「在正式遊戲中，你將扮演擁有此特質的船員，挖掘更深層的秘密。」
+                                    </p>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4 border-t border-[#2a1e12] pt-4 mb-8">
+                                    <div><p className="text-[9px] text-[#5a4e3e]">起始理智值 (SAN)</p><p className="text-red-500 font-mono font-bold">{finalResult.stats.san}</p></div>
+                                    <div><p className="text-[9px] text-[#5a4e3e]">預估生還率</p><p className="text-[#d4c5b0] font-mono font-bold">{finalResult.stats.survival}</p></div>
+                                    <div className="col-span-2"><p className="text-[9px] text-[#5a4e3e]">人物核心特質</p><p className="text-[#a49682] text-xs font-bold">{finalResult.stats.attr}</p></div>
+                                </div>
+                                <div className="text-center mt-auto"><p className="text-[9px] text-[#3a2e22] tracking-widest">立刻搜尋「聖瑪利亞號」面對深淵</p></div>
+                            </div>
+
+                            <div className="mt-8 flex flex-col sm:flex-row gap-4 w-full">
+                                <button onClick={exportImage} disabled={isExporting} className="flex-1 py-3 border border-[#3a2e22] text-[#d4c5b0] text-sm hover:bg-[#1a1510] transition-colors flex justify-center items-center gap-2">
+                                    {isExporting ? '生成圖片中...' : '📥 儲存結果圖'}
+                                </button>
+                                <a href="game.html" className="flex-1 py-3 border border-[#5a0000] bg-red-950/20 text-[#ffcccc] text-sm hover:bg-red-900/40 transition-colors flex justify-center items-center text-center font-bold tracking-widest shadow-[0_0_15px_rgba(139,0,0,0.2)]">
+                                    正式登船 (Enter Game)
+                                </a>
+                            </div>
+                            <button onClick={handleStartQuiz} className="mt-6 text-[#5a4e3e] text-xs underline hover:text-[#8c7b65]">
+                                重新接受評估
+                            </button>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
