@@ -3251,7 +3251,8 @@ const initializePlayerAttributes = () => {
 // 為特殊事件添加法則專屬選項（如果事件支援）
 const enrichSpecialEventWithLawOptions = (event, playerLaw) => {
   if (!event || !event.choices) return event;
-  const clone = JSON.parse(JSON.stringify(event));
+  // IMPORTANT: avoid JSON clone here, it strips success/failure callbacks and causes runtime crashes.
+  const clone = { ...event, choices: event.choices.map(c => ({ ...c })) };
   // 若玩家有特定法則，向選項中注入可選動作或調整檢定難度
   if (playerLaw === PERSONA.PIOUS) {
     // 法則：祈禱與祝禱使某些檢定更容易
@@ -3624,19 +3625,21 @@ function SantaMaria() {
   // ==========================================
   // 特殊事件結算函數
   // ==========================================
-  const resolveSpecialEvent = (choice) => {
+const resolveSpecialEvent = (choice) => {
     const playerAttrValue = gameState.playerAttributes[choice.attribute] || 3;
     const check = performSkillCheck(50, choice.difficulty, playerAttrValue);
     triggerDiceAnimation(check, `重大事件：${choice.label || choice.text || '事件判定'}`);
     
     setGameState(prev => {
       let chars = [...prev.characters];
-      const resultMsg = check.success ? choice.success(chars, prev) : choice.failure(chars, prev);
+      const onSuccess = typeof choice.success === 'function' ? choice.success : (() => '你成功處理了危機，但細節在混亂中無法辨識。');
+      const onFailure = typeof choice.failure === 'function' ? choice.failure : (() => '你未能控制局勢，甲板陷入更深的混亂。');
+      const resultMsg = check.success ? onSuccess(chars, prev) : onFailure(chars, prev);
       const logsToAdd = [{
         id: generateId(),
         day: prev.day,
         phase: prev.phase,
-        msg: `【重大事件】${activeSpecialEvent.name}：${resultMsg} [檢定 ${check.message}]`,
+        msg: `【重大事件】${activeSpecialEvent?.name || '未知危機'}：${resultMsg} [檢定 ${check.message}]`,
         type: check.success ? 'success' : 'fatal'
       }];
       
